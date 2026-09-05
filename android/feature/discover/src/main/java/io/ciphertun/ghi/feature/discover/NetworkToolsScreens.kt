@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,7 +45,12 @@ import io.ciphertun.ghi.core.designsystem.GhiSignalAmber
 import io.ciphertun.ghi.core.designsystem.GhiSignalGreen
 import io.ciphertun.ghi.core.designsystem.GhiSignalRed
 import io.ciphertun.ghi.core.ui.components.GhiScreenScaffold
+import io.ciphertun.ghi.core.ui.components.GhiCard
+import io.ciphertun.ghi.core.ui.components.GhiHero
+import io.ciphertun.ghi.core.designsystem.GhiSlate300
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -331,7 +339,7 @@ private fun RequestCard(
 ) {
     OutlinedCard(
         colors = CardDefaults.outlinedCardColors(containerColor = GhiInk950),
-        border = CardDefaults.outlineCardBorder().copy(width = 1.dp),
+        border = CardDefaults.outlinedCardBorder().copy(width = 1.dp),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -548,7 +556,7 @@ private fun ResultToolbar(
 @Composable
 private fun LoadingResultCard(target: String) {
     OutlinedCard(
-        border = CardDefaults.outlineCardBorder(),
+        border = CardDefaults.outlinedCardBorder(),
         colors = CardDefaults.outlinedCardColors(containerColor = GhiInk950),
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth()
@@ -585,7 +593,7 @@ private fun ResponseResultCard(item: CheckItem, index: Int, clipboard: androidx.
 
     OutlinedCard(
         colors = CardDefaults.outlinedCardColors(containerColor = GhiInk950),
-        border = CardDefaults.outlineCardBorder(),
+        border = CardDefaults.outlinedCardBorder(),
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth().animateContentSize()
     ) {
@@ -634,7 +642,7 @@ private fun ResponseResultCard(item: CheckItem, index: Int, clipboard: androidx.
 
             AnimatedVisibility(expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 34.dp, top = 10.dp)) {
-                    DetailRow("IP", r.optJSONArray("addresses")?.joinToString() ?: "—")
+                    DetailRow("IP", r.optJSONArray("addresses")?.let { array -> (0 until array.length()).joinToString() { i -> array.optString(i) } } ?: "—")
                     if (mode == "HTTP") {
                         DetailRow("Final URL", r.optString("final_url", "—"))
                         DetailRow("Protocol", r.optString("http_protocol", "—"))
@@ -643,8 +651,8 @@ private fun ResponseResultCard(item: CheckItem, index: Int, clipboard: androidx.
                         DetailRow("TLS", "${r.optString("tls_version", "—")} ${r.optString("tls_cipher", "")}".trim())
                         DetailRow("CDN", r.optString("cdn", "Not detected"))
                         DetailRow("Title", r.optString("title", "—"))
-                        DetailRow("Technologies", r.optJSONArray("technologies")?.joinToString() ?: "—")
-                        DetailRow("Security", r.optJSONArray("security_headers")?.joinToString() ?: "—")
+                        DetailRow("Technologies", r.optJSONArray("technologies")?.let { array -> (0 until array.length()).joinToString() { i -> array.optString(i) } } ?: "—")
+                        DetailRow("Security", r.optJSONArray("security_headers")?.let { array -> (0 until array.length()).joinToString() { i -> array.optString(i) } } ?: "—")
                         DetailRow("Body", "${r.optLong("body_size", 0)} bytes")
                         if (r.optString("body").isNotBlank()) {
                             InfoPanel(r.optString("body").take(5000))
@@ -654,7 +662,7 @@ private fun ResponseResultCard(item: CheckItem, index: Int, clipboard: androidx.
                         DetailRow("Resolver", r.optString("resolver", "—"))
                         DetailRow("RCode", r.optInt("rcode", -1).toString())
                         DetailRow("Answers", r.optInt("answers", 0).toString())
-                        DetailRow("A records", r.optJSONArray("answer_ips")?.joinToString() ?: "—")
+                        DetailRow("A records", r.optJSONArray("answer_ips")?.let { array -> (0 until array.length()).joinToString() { i -> array.optString(i) } } ?: "—")
                         DetailRow("Authority", r.optInt("authority_records", 0).toString())
                         r.optString("error").takeIf { it.isNotBlank() }?.let { InfoPanel(it, error = true) }
                     }
