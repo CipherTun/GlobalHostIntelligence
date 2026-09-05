@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.GlobalHostIntelligence" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#050A14</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ghi_discovery_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.GlobalHostIntelligence.App</item>
+    </style>
+    <style name="Theme.GlobalHostIntelligence.App" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#050A14</item>
+        <item name="android:navigationBarColor">#050A14</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

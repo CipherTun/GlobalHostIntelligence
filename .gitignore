@@ -1,0 +1,16 @@
+# Android
+android/**/build/
+android/.gradle/
+android/local.properties
+android/*.iml
+android/.idea/
+*.apk
+*.aab
+
+# Go
+backend/bin/
+backend/*.exe
+
+# General
+.DS_Store
+*.log

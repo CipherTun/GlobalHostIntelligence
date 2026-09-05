@@ -1,0 +1,3 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ghi_globe">
+    <target android:name="globeGroup" android:animation="@anim/ghi_globe_spin" />
+</animated-vector>

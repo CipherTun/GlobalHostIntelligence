@@ -1,0 +1,98 @@
+name: Mobile Core Library (AAR)
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  build-aar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go 1.27
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK r29
+        run: sdkmanager --install "ndk;29.0.14206865"
+
+      - name: Compile and unit-test mobile discovery core
+        run: |
+          cd backend
+          go test ./mobile -count=1
+
+      - name: Add latest golang.org/x/mobile toolchain to module
+        run: |
+          cd backend
+          go get golang.org/x/mobile@latest
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+
+      - name: Build ARM32 + ARM64 AAR
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/29.0.14206865
+        run: |
+          cd backend
+          rm -f ghicore.aar
+          gomobile bind \
+            -target=android/arm,android/arm64 \
+            -androidapi 26 \
+            -javapkg=io.ciphertun.ghi.core.crawlercore.generated \
+            -o ghicore.aar \
+            ./mobile
+
+      - name: Verify AAR contains ARM32 + ARM64 and the generated Mobile API
+        run: |
+          cd backend
+          test -f ghicore.aar
+          unzip -l ghicore.aar | grep -q 'jni/armeabi-v7a/libgojni.so'
+          unzip -l ghicore.aar | grep -q 'jni/arm64-v8a/libgojni.so'
+
+          # gomobile uses -javapkg as a package prefix and appends the Go
+          # package name (mobile), so the generated class must be:
+          # io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile
+          unzip -p ghicore.aar classes.jar > /tmp/ghi-classes.jar
+          jar tf /tmp/ghi-classes.jar | grep -qx \
+            'io/ciphertun/ghi/core/crawlercore/generated/mobile/Mobile.class'
+
+          javap -classpath /tmp/ghi-classes.jar \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q 'ping()'
+          javap -classpath /tmp/ghi-classes.jar \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q 'resolveDomain(java.lang.String)'
+
+          javap -classpath /tmp/ghi-classes.jar io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q 'discover(java.lang.String'
+          javap -classpath /tmp/ghi-classes.jar io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q 'analyzeHost(java.lang.String)'
+          javap -classpath /tmp/ghi-classes.jar io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q 'generateRequest(java.lang.String'
+          javap -classpath /tmp/ghi-classes.jar io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q 'checkHost(java.lang.String'
+          javap -classpath /tmp/ghi-classes.jar io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q 'checkResponse(java.lang.String'
+          javap -classpath /tmp/ghi-classes.jar io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q 'resolveIP(java.lang.String'
+          echo "Verified: armeabi-v7a + arm64-v8a + all required Mobile API methods"
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghi-core-aar
+          path: backend/ghicore.aar
+          if-no-files-found: error

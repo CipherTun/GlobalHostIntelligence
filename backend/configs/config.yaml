@@ -1,0 +1,23 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  env: "development"
+
+postgres:
+  # Overridden by GHI_POSTGRES_DSN in CI/deployed environments.
+  dsn: "postgres://ghi:ghi@localhost:5432/ghi?sslmode=disable"
+  max_conns: 10
+  min_conns: 2
+
+redis:
+  # Overridden by GHI_REDIS_ADDR / GHI_REDIS_PASSWORD.
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+crawler:
+  worker_pool_size: 8
+  dns_worker_count: 16
+  http_worker_count: 8
+  tls_worker_count: 8
+  source_timeout_secs: 30
