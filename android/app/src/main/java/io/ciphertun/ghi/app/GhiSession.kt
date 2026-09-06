@@ -70,30 +70,34 @@ class GhiSession(context: Context) {
                 }
             }
 
-            if (!sources.contains("country-world")) coroutineScope {
-                val sourceGate = kotlinx.coroutines.sync.Semaphore(sourceParallelism())
-                sources.map { source ->
-                    async(Dispatchers.IO) {
-                        sourceGate.withPermit {
-                            runCatching {
-                                val raw = GhiMobileBridge.discoverRawSource(normalized, source, (limit * 2).coerceAtMost(1000))
-                                val obj = JSONObject(raw)
-                                val arr = obj.optJSONArray("domains") ?: obj.optJSONArray("results") ?: JSONArray()
-                                for (i in 0 until arr.length()) {
-                                    val item = arr.opt(i)
-                                    val candidate = if (item is JSONObject) item.optString("domain") else item.toString()
-                                    candidate.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
-                                        .takeIf { it.isNotBlank() && it.contains('.') && !it.contains(':') && !it.contains(' ') }
-                                        ?.let(seen::add)
-                                }
-                                obj.optString("error").takeIf { it.isNotBlank() }?.let { failures.add(source) }
-                            }.onFailure { failures.add(source) }
+            if (!sources.contains("country-world")) {
+                coroutineScope {
+                    val sourceGate = kotlinx.coroutines.sync.Semaphore(sourceParallelism())
+                    sources.map { source ->
+                        async(Dispatchers.IO) {
+                            sourceGate.withPermit {
+                                runCatching {
+                                    val raw = GhiMobileBridge.discoverRawSource(normalized, source, (limit * 2).coerceAtMost(1000))
+                                    val obj = JSONObject(raw)
+                                    val arr = obj.optJSONArray("domains") ?: obj.optJSONArray("results") ?: JSONArray()
+                                    for (i in 0 until arr.length()) {
+                                        val item = arr.opt(i)
+                                        val candidate = if (item is JSONObject) item.optString("domain") else item.toString()
+                                        candidate.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
+                                            .takeIf { it.isNotBlank() && it.contains('.') && !it.contains(':') && !it.contains(' ') }
+                                            ?.let(seen::add)
+                                    }
+                                    obj.optString("error").takeIf { it.isNotBlank() }?.let { failures.add(source) }
+                                }.onFailure { failures.add(source) }
+                            }
                         }
-                    }
-                }.awaitAll()
+                    }.awaitAll()
+                }
+            }
 
-                // Bounded validation: never create one coroutine/native call per candidate.
-                val candidates = seen.toList().take(limit * 4)
+            // Bounded validation always runs, including country-world results.
+            val candidates = seen.toList().take(limit * 4)
+            if (candidates.isNotEmpty()) {
                 val workerCount = minOf(validationThreads(), candidates.size).coerceAtLeast(1)
                 val queue = kotlinx.coroutines.channels.Channel<String>(workerCount)
                 val accepted = ConcurrentHashMap<String, DomainPing>()
@@ -125,6 +129,8 @@ class GhiSession(context: Context) {
                 workers.joinAll()
                 publisher.cancelAndJoin()
                 _liveResults.value = accepted.values.sortedBy { it.domain }.take(limit)
+            } else {
+                _liveResults.value = emptyList()
             }
             _elapsedMs.value = System.currentTimeMillis() - started
             if (isActive) {
