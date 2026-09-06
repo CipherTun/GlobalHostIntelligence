@@ -33,6 +33,7 @@ object GhiMobileBridge {
     fun discover(query: String, maxResults: Int = 100): String = invoke("discover", query, maxResults)
     fun discoverSource(query: String, source: String, maxResults: Int = 100): String = invoke("discoverSource", query, source, maxResults)
     fun discoverCandidates(query: String, source: String, maxResults: Int = 100): String = invoke("discoverCandidates", query, source, maxResults)
+    fun discoverCountryWorld(country: String, maxResults: Int = 500, providerConfigJson: String = "{}"): String = invoke("discoverCountryWorld", country, maxResults, providerConfigJson)
     fun discoverCarrier(query: String, maxResults: Int = 100): String = invoke("discoverCarrier", query, maxResults)
     fun analyzeHost(host: String): String = invoke("analyzeHost", host)
     fun analyzeHostWithTimeout(host: String, timeoutSeconds: Int): String = invoke("analyzeHostWithTimeout", host, timeoutSeconds)

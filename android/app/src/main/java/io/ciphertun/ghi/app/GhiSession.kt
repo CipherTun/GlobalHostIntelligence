@@ -52,6 +52,29 @@ class GhiSession(context: Context) {
                 }
             }.distinct()
 
+            if (!scopeMode.equals("domain", true)) {
+                // WORLDWIDE_COUNTRY_ENGINE: country discovery is one resilient fan-out;
+                // URLScan is only one source and cannot abort the run.
+                val raw = GhiMobileBridge.discoverCountryWorld(normalized, maxResults, "{}")
+                runCatching {
+                    val obj = JSONObject(raw)
+                    val arr = obj.optJSONArray("domains") ?: JSONArray()
+                    val candidates = buildList { for (i in 0 until arr.length()) { val d = arr.optString(i).trim().lowercase(); if (d.isNotBlank()) add(d) } }
+                    candidates.map { candidate -> async(Dispatchers.IO) {
+                        if (!seen.add(candidate)) return@async
+                        validationGate.withPermit {
+                            val analyzed = runCatching { JSONObject(GhiMobileBridge.analyzeHostWithOptions(candidate, validationTimeout(), userAgent())) }.getOrNull() ?: return@withPermit
+                            val https = analyzed.optInt("https_status", -1); val http = analyzed.optInt("http_status", -1)
+                            val statusCode = when { https in 200..399 -> https; http in 200..399 -> http; else -> -1 }
+                            if (statusCode > 0) withContext(Dispatchers.Main.immediate) { if (_liveResults.value.size < maxResults) _liveResults.value = _liveResults.value + DomainPing(candidate, analyzed.optLong("elapsed_ms", 0L), statusCode) }
+                        }
+                    } }.awaitAll()
+                    obj.optJSONObject("errors")?.let { errors -> if (errors.length() > 0) withContext(Dispatchers.Main.immediate) { _error.value = "PARTIAL • ${errors.length()} source issues" } }
+                }.onFailure { e -> withContext(Dispatchers.Main.immediate) { _error.value = "Country discovery: ${e.message ?: "source engine failed"}" } }
+                _elapsedMs.value = System.currentTimeMillis() - started
+                if (isActive) _status.value = if (_liveResults.value.isNotEmpty()) "COMPLETED" else "FAILED"
+                return@launch
+            }
             if (sources.isEmpty()) {
                 _error.value = "Enable at least one discovery source in Settings."
                 _status.value = "FAILED"
