@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.ciphertun.ghi.core.designsystem.*
+import androidx.compose.animation.core.rememberInfiniteTransition
 
 private val glassShape = RoundedCornerShape(18.dp)
 
