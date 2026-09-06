@@ -11,7 +11,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 class GhiSession(context: Context) {
@@ -30,173 +29,165 @@ class GhiSession(context: Context) {
     fun startDiscovery(query: String, scopeMode: String = "country", maxResults: Int = discoveryLimit()): String {
         val normalized = query.trim().lowercase()
         if (normalized.isBlank()) return ""
-        val id = UUID.randomUUID().toString()
+        val limit = maxResults.coerceIn(10, 500)
+        discoveryJob?.cancel()
         _status.value = "RUNNING"
         _error.value = null
-        _elapsedMs.value = 0
+        _elapsedMs.value = 0L
         _liveResults.value = emptyList()
-        discoveryJob?.cancel()
 
         discoveryJob = scope.launch {
             val started = System.currentTimeMillis()
             val seen = ConcurrentHashMap.newKeySet<String>()
-            val validationGate = Semaphore(validationThreads())
-            val sourceGate = Semaphore(sourceParallelism())
+            val failures = ConcurrentHashMap.newKeySet<String>()
             val sources = if (scopeMode.equals("domain", true)) {
-                enabledSources().filterNot { it == "country" }
-                    .map { it to normalized }
+                enabledSources().filterNot { it == "country" }.toList()
             } else {
                 buildList {
-                    if (enabledSources().contains("country")) add("country" to normalized)
-                    if (enabledSources().contains("urlscan")) add("urlscan" to normalized)
+                    if (enabledSources().contains("country")) add("country-world")
+                    else if (enabledSources().contains("urlscan")) add("urlscan")
                 }
             }.distinct()
 
-            if (!scopeMode.equals("domain", true)) {
-                // WORLDWIDE_COUNTRY_ENGINE: country discovery is one resilient fan-out;
-                // URLScan is only one source and cannot abort the run.
-                val raw = GhiMobileBridge.discoverCountryWorld(normalized, maxResults, "{}")
-                runCatching {
-                    val obj = JSONObject(raw)
-                    val arr = obj.optJSONArray("domains") ?: JSONArray()
-                    val candidates = buildList { for (i in 0 until arr.length()) { val d = arr.optString(i).trim().lowercase(); if (d.isNotBlank()) add(d) } }
-                    candidates.map { candidate -> async(Dispatchers.IO) {
-                        if (!seen.add(candidate)) return@async
-                        validationGate.withPermit {
-                            val analyzed = runCatching { JSONObject(GhiMobileBridge.analyzeHostWithOptions(candidate, validationTimeout(), userAgent())) }.getOrNull() ?: return@withPermit
-                            val https = analyzed.optInt("https_status", -1); val http = analyzed.optInt("http_status", -1)
-                            val statusCode = when { https in 200..399 -> https; http in 200..399 -> http; else -> -1 }
-                            if (statusCode > 0) withContext(Dispatchers.Main.immediate) { if (_liveResults.value.size < maxResults) _liveResults.value = _liveResults.value + DomainPing(candidate, analyzed.optLong("elapsed_ms", 0L), statusCode) }
-                        }
-                    } }.awaitAll()
-                    obj.optJSONObject("errors")?.let { errors -> if (errors.length() > 0) withContext(Dispatchers.Main.immediate) { _error.value = "PARTIAL • ${errors.length()} source issues" } }
-                }.onFailure { e -> withContext(Dispatchers.Main.immediate) { _error.value = "Country discovery: ${e.message ?: "source engine failed"}" } }
-                _elapsedMs.value = System.currentTimeMillis() - started
-                if (isActive) _status.value = if (_liveResults.value.isNotEmpty()) "COMPLETED" else "FAILED"
-                return@launch
-            }
             if (sources.isEmpty()) {
-                _error.value = "Enable at least one discovery source in Settings."
+                _error.value = "Enable at least one discovery source in Sources."
                 _status.value = "FAILED"
                 return@launch
             }
 
-            coroutineScope {
-                sources.map { (source, sourceQuery) ->
-                    launch(Dispatchers.IO) {
+            if (sources.contains("country-world")) {
+                val raw = withContext(Dispatchers.IO) {
+                    GhiMobileBridge.discoverCountryWorld(normalized, limit, providerConfigJson())
+                }
+                val obj = runCatching { JSONObject(raw) }.getOrElse { throw IllegalStateException("Invalid country discovery response") }
+                val arr = obj.optJSONArray("domains") ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val value = arr.optString(i).trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
+                    if (value.contains('.') && !value.contains(':') && !value.contains(' ')) seen.add(value)
+                }
+                obj.optJSONObject("errors")?.let { errors ->
+                    errors.keys().forEach { failures.add(it) }
+                }
+            }
+
+            if (!sources.contains("country-world")) coroutineScope {
+                val sourceGate = kotlinx.coroutines.sync.Semaphore(sourceParallelism())
+                sources.map { source ->
+                    async(Dispatchers.IO) {
                         sourceGate.withPermit {
-                            val raw = GhiMobileBridge.discoverCandidates(sourceQuery, source, (maxResults * 2).coerceAtMost(2000))
                             runCatching {
+                                val raw = GhiMobileBridge.discoverRawSource(normalized, source, (limit * 2).coerceAtMost(1000))
                                 val obj = JSONObject(raw)
                                 val arr = obj.optJSONArray("domains") ?: obj.optJSONArray("results") ?: JSONArray()
-                                val candidates = buildList {
-                                    for (i in 0 until arr.length()) {
-                                        val item = arr.opt(i)
-                                        val domain = if (item is JSONObject) item.optString("domain") else item.toString()
-                                        if (domain.isNotBlank()) add(domain)
-                                    }
+                                for (i in 0 until arr.length()) {
+                                    val item = arr.opt(i)
+                                    val candidate = if (item is JSONObject) item.optString("domain") else item.toString()
+                                    candidate.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
+                                        .takeIf { it.isNotBlank() && it.contains('.') && !it.contains(':') && !it.contains(' ') }
+                                        ?.let(seen::add)
                                 }
-                                coroutineScope {
-                                    candidates.map { candidate ->
-                                        async(Dispatchers.IO) {
-                                            val domain = candidate.trim().lowercase()
-                                            if (domain.isBlank() || !seen.add(domain)) return@async
-                                            validationGate.withPermit {
-                                                val analyzed = runCatching {
-                                                    JSONObject(GhiMobileBridge.analyzeHostWithOptions(domain, validationTimeout(), userAgent()))
-                                                }.getOrNull() ?: return@withPermit
-                                                val https = analyzed.optInt("https_status", -1)
-                                                val http = analyzed.optInt("http_status", -1)
-                                                val status = when { https in 200..399 -> https; http in 200..399 -> http; else -> -1 }
-                                                if (status < 0) return@withPermit
-                                                val result = DomainPing(domain, analyzed.optLong("elapsed_ms", 0L), status)
-                                                withContext(Dispatchers.Main.immediate) {
-                                                    if (_liveResults.value.size < maxResults && _liveResults.value.none { it.domain == domain }) {
-                                                        _liveResults.value = _liveResults.value + result
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }.awaitAll()
-                                }
-                                obj.optString("error").takeIf { it.isNotBlank() }?.let { msg ->
-                                    withContext(Dispatchers.Main.immediate) { _error.value = "$source: $msg" }
-                                }
-                            }.onFailure { e ->
-                                withContext(Dispatchers.Main.immediate) { _error.value = "$source: ${e.message ?: "source failed"}" }
-                            }
+                                obj.optString("error").takeIf { it.isNotBlank() }?.let { failures.add(source) }
+                            }.onFailure { failures.add(source) }
                         }
                     }
-                }.joinAll()
+                }.awaitAll()
+
+                // Bounded validation: never create one coroutine/native call per candidate.
+                val candidates = seen.toList().take(limit * 4)
+                val workerCount = minOf(validationThreads(), candidates.size).coerceAtLeast(1)
+                val queue = kotlinx.coroutines.channels.Channel<String>(workerCount)
+                val accepted = ConcurrentHashMap<String, DomainPing>()
+                val workers = List(workerCount) {
+                    launch(Dispatchers.IO) {
+                        for (candidate in queue) {
+                            if (!isActive || accepted.size >= limit) continue
+                            val analyzed = runCatching {
+                                JSONObject(GhiMobileBridge.analyzeHostWithOptions(candidate, validationTimeout(), userAgent()))
+                            }.getOrNull() ?: continue
+                            val https = analyzed.optInt("https_status", -1)
+                            val http = analyzed.optInt("http_status", -1)
+                            val code = when { https in 200..399 -> https; http in 200..399 -> http; else -> -1 }
+                            if (code in 200..399) accepted.putIfAbsent(candidate, DomainPing(candidate, analyzed.optLong("elapsed_ms", 0L), code))
+                        }
+                    }
+                }
+                val publisher = launch(Dispatchers.Main.immediate) {
+                    while (isActive && workers.any { it.isActive }) {
+                        _liveResults.value = accepted.values.sortedBy { it.domain }.take(limit)
+                        delay(120)
+                    }
+                }
+                for (candidate in candidates) {
+                    if (!isActive || accepted.size >= limit) break
+                    queue.send(candidate)
+                }
+                queue.close()
+                workers.joinAll()
+                publisher.cancelAndJoin()
+                _liveResults.value = accepted.values.sortedBy { it.domain }.take(limit)
             }
             _elapsedMs.value = System.currentTimeMillis() - started
-            if (isActive) _status.value = if (_liveResults.value.isNotEmpty()) "COMPLETED" else "FAILED"
+            if (isActive) {
+                _status.value = when {
+                    _liveResults.value.size >= limit -> "COMPLETED"
+                    _liveResults.value.isNotEmpty() && failures.isNotEmpty() -> "PARTIAL"
+                    _liveResults.value.isNotEmpty() -> "COMPLETED"
+                    failures.isNotEmpty() -> "FAILED"
+                    else -> "COMPLETED"
+                }
+            }
         }
-        return id
+        return normalized
     }
 
     fun stopDiscovery() {
-        discoveryJob?.cancel()
-        discoveryJob = null
+        discoveryJob?.cancel(); discoveryJob = null
         if (_status.value == "RUNNING") _status.value = "STOPPED"
     }
 
     fun analyze(host: String): String = GhiMobileBridge.analyzeHostWithOptions(host, validationTimeout(), userAgent())
     fun checkResponse(mode: String, targets: String, proxy: String, method: String, path: String, headers: String, body: String, followRedirects: Boolean, allowInsecure: Boolean, timeoutSeconds: Int, payloadMode: Boolean, dnsTransport: String, resolver: String, authoritative: String): String =
         GhiMobileBridge.checkResponse(mode, targets, proxy, method, path, headers, body, followRedirects, allowInsecure, timeoutSeconds, payloadMode, dnsTransport, resolver, authoritative)
-
     fun resolve(host: String): String = GhiMobileBridge.resolveDomain(host)
     fun resolveIp(value: String): String = GhiMobileBridge.resolveIp(value)
+    fun discoverSubdomains(domain: String, maxResults: Int = 500): String = GhiMobileBridge.discoverSubdomains(domain, maxResults)
 
-    fun saveSources(sources: Set<String>) {
-        prefs.edit().putStringSet("enabled_sources", sources).apply()
-    }
+    fun saveSources(sources: Set<String>) = prefs.edit().putStringSet("enabled_sources", sources).apply()
 
     fun exportResults(format: String): String {
         val current = _liveResults.value
         return when (format.lowercase()) {
-            "csv" -> buildString {
-                appendLine("domain,status,latency_ms")
-                current.forEach { appendLine("${it.domain},${it.status},${it.latencyMs}") }
-            }
-            "json" -> JSONArray(current.map { JSONObject().apply {
-                put("domain", it.domain); put("status", it.status); put("latency_ms", it.latencyMs)
-            } }).toString(2)
+            "csv" -> buildString { appendLine("domain,status,latency_ms"); current.forEach { appendLine("${it.domain},${it.status},${it.latencyMs}") } }
+            "json" -> JSONArray(current.map { JSONObject().apply { put("domain", it.domain); put("status", it.status); put("latency_ms", it.latencyMs) } }).toString(2)
             else -> current.joinToString("\n") { it.domain }
         }
     }
 
-    fun discoveryLimit() = prefs.getInt("discovery_limit", 500).coerceIn(10, 5000)
-    fun validationThreads() = prefs.getInt("validation_threads", 32).coerceIn(1, 256)
-    fun sourceParallelism() = prefs.getInt("source_parallelism", 8).coerceIn(1, 32)
-    fun validationTimeout() = prefs.getInt("validation_timeout", 10).coerceIn(2, 60)
-    fun userAgent() = prefs.getString("user_agent", "GlobalHostIntelligence/2.3") ?: "GlobalHostIntelligence/2.3"
+    fun discoveryLimit() = prefs.getInt("discovery_limit", 500).coerceIn(10, 500)
+    fun validationThreads() = prefs.getInt("validation_threads", 32).coerceIn(1, 128)
+    fun sourceParallelism() = prefs.getInt("source_parallelism", 8).coerceIn(1, 24)
+    fun validationTimeout() = prefs.getInt("validation_timeout", 8).coerceIn(2, 30)
+    fun userAgent() = prefs.getString("user_agent", "GlobalHostIntelligence/3.0") ?: "GlobalHostIntelligence/3.0"
     fun animationsEnabled() = prefs.getBoolean("animations", true)
     fun compactResults() = prefs.getBoolean("compact_results", false)
-
     fun enabledSources(): Set<String> = prefs.getStringSet("enabled_sources", DEFAULT_SOURCES)?.toSet() ?: DEFAULT_SOURCES
 
+    fun providerConfigJson(): String = JSONObject().apply {
+        put("Censys", prefs.getString("provider_censys", "") ?: "")
+        put("Netlas", prefs.getString("provider_netlas", "") ?: "")
+        put("Shodan", prefs.getString("provider_shodan", "") ?: "")
+    }.toString()
+
     fun saveSettings(limit: Int, threads: Int, parallel: Int, timeout: Int, agent: String, sources: Set<String>, animations: Boolean, compact: Boolean) {
-        prefs.edit()
-            .putInt("discovery_limit", limit.coerceIn(10, 5000))
-            .putInt("validation_threads", threads.coerceIn(1, 256))
-            .putInt("source_parallelism", parallel.coerceIn(1, 32))
-            .putInt("validation_timeout", timeout.coerceIn(2, 60))
-            .putString("user_agent", agent.trim().ifBlank { "GlobalHostIntelligence/2.3" })
-            .putStringSet("enabled_sources", sources)
-            .putBoolean("animations", animations)
-            .putBoolean("compact_results", compact)
-            .apply()
+        prefs.edit().putInt("discovery_limit", limit.coerceIn(10, 500)).putInt("validation_threads", threads.coerceIn(1, 128))
+            .putInt("source_parallelism", parallel.coerceIn(1, 24)).putInt("validation_timeout", timeout.coerceIn(2, 30))
+            .putString("user_agent", agent.trim().ifBlank { "GlobalHostIntelligence/3.0" }).putStringSet("enabled_sources", sources)
+            .putBoolean("animations", animations).putBoolean("compact_results", compact).apply()
     }
 
-    fun resetSettings() { prefs.edit().clear().apply() }
-
+    fun resetSettings() = prefs.edit().clear().apply()
 
     companion object {
-        val DEFAULT_SOURCES = linkedSetOf(
-            "urlscan", "crt.sh", "crt.name", "ctlogs.dev", "certspotter", "rapiddns",
-            "anubis", "subdomain.center", "hackertarget", "wayback", "threatminer",
-            "commoncrawl", "otx", "subdomain.app", "sonar", "riddler", "jldc", "sublist3r", "country"
-        )
+        val DEFAULT_SOURCES = linkedSetOf("urlscan","crt.sh","crt.name","ctlogs.dev","certspotter","rapiddns","anubis","subdomain.center","hackertarget","wayback","threatminer","commoncrawl","otx","subdomain.app","sonar","riddler","jldc","sublist3r","country")
     }
 }
