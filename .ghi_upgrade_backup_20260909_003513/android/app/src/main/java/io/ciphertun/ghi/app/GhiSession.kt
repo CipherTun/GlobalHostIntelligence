@@ -7,6 +7,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,8 +18,6 @@ class GhiSession(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _liveResults = MutableStateFlow<List<DomainPing>>(emptyList())
     val liveResults: StateFlow<List<DomainPing>> = _liveResults.asStateFlow()
-    private val _discoveredResults = MutableStateFlow<List<DomainPing>>(emptyList())
-    val discoveredResults: StateFlow<List<DomainPing>> = _discoveredResults.asStateFlow()
     private val _status = MutableStateFlow("READY")
     val status: StateFlow<String> = _status.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
@@ -36,69 +35,42 @@ class GhiSession(context: Context) {
         _error.value = null
         _elapsedMs.value = 0L
         _liveResults.value = emptyList()
-        _discoveredResults.value = emptyList()
 
         discoveryJob = scope.launch {
             val started = System.currentTimeMillis()
             val seen = ConcurrentHashMap.newKeySet<String>()
             val failures = ConcurrentHashMap.newKeySet<String>()
-            fun publishDiscovered() {
-                _discoveredResults.value = seen.toList().sorted().take(limit * 4).map { DomainPing(it, 0L, -1, false) }
-            }
             val sources = if (scopeMode.equals("domain", true)) {
-                enabledSources().filterNot { it == "country" || it == "urlscan-country" }.toList()
+                enabledSources().filterNot { it == "country" }.toList()
             } else {
                 buildList {
                     if (enabledSources().contains("country")) add("country-world")
-                    if (enabledSources().contains("urlscan-country")) add("urlscan-country")
-                    if (enabledSources().contains("urlscan") && !contains("urlscan-country")) add("urlscan")
-                }.distinct()
-            }
+                    else if (enabledSources().contains("urlscan")) add("urlscan")
+                }
+            }.distinct()
+
             if (sources.isEmpty()) {
-                _error.value = "Enable at least one discovery source in Settings."
+                _error.value = "Enable at least one discovery source in Sources."
                 _status.value = "FAILED"
                 return@launch
             }
 
-            if (sources.contains("country-world") || sources.contains("urlscan-country")) {
-                coroutineScope {
-                    val jobs = buildList {
-                        if (sources.contains("country-world")) add(async(Dispatchers.IO) {
-                            runCatching {
-                                val raw = GhiMobileBridge.discoverCountryWorld(normalized, limit, providerConfigJson())
-                                val obj = JSONObject(raw)
-                                val arr = obj.optJSONArray("domains") ?: JSONArray()
-                                var added = false
-                                for (i in 0 until arr.length()) {
-                                    val value = arr.optString(i).trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
-                                    if (value.contains('.') && !value.contains(':') && !value.contains(' ')) if (seen.add(value)) added = true
-                                }
-                                obj.optJSONObject("errors")?.let { errors -> errors.keys().forEach { failures.add(it) } }
-                                if (added) withContext(Dispatchers.Main.immediate) { publishDiscovered() }
-                            }.onFailure { failures.add("country-world") }
-                        })
-                        if (sources.contains("urlscan-country")) add(async(Dispatchers.IO) {
-                            runCatching {
-                                val raw = GhiMobileBridge.discoverRawSource(normalized, "urlscan-country", limit)
-                                val obj = JSONObject(raw)
-                                val arr = obj.optJSONArray("domains") ?: obj.optJSONArray("results") ?: JSONArray()
-                                var added = false
-                                for (i in 0 until arr.length()) {
-                                    val item = arr.opt(i)
-                                    val candidate = if (item is JSONObject) item.optString("domain") else item.toString()
-                                    candidate.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
-                                        .takeIf { it.isNotBlank() && it.contains('.') && !it.contains(':') && !it.contains(' ') }
-                                        ?.let { if (seen.add(it)) added = true }
-                                }
-                                if (added) withContext(Dispatchers.Main.immediate) { publishDiscovered() }
-                            }.onFailure { failures.add("urlscan-country") }
-                        })
-                    }
-                    jobs.awaitAll()
+            if (sources.contains("country-world")) {
+                val raw = withContext(Dispatchers.IO) {
+                    GhiMobileBridge.discoverCountryWorld(normalized, limit, providerConfigJson())
+                }
+                val obj = runCatching { JSONObject(raw) }.getOrElse { throw IllegalStateException("Invalid country discovery response") }
+                val arr = obj.optJSONArray("domains") ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val value = arr.optString(i).trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
+                    if (value.contains('.') && !value.contains(':') && !value.contains(' ')) seen.add(value)
+                }
+                obj.optJSONObject("errors")?.let { errors ->
+                    errors.keys().forEach { failures.add(it) }
                 }
             }
 
-            if (!sources.contains("country-world") && !sources.contains("urlscan-country")) {
+            if (!sources.contains("country-world")) {
                 coroutineScope {
                     val sourceGate = kotlinx.coroutines.sync.Semaphore(sourceParallelism())
                     sources.map { source ->
@@ -108,15 +80,13 @@ class GhiSession(context: Context) {
                                     val raw = GhiMobileBridge.discoverRawSource(normalized, source, (limit * 2).coerceAtMost(1000))
                                     val obj = JSONObject(raw)
                                     val arr = obj.optJSONArray("domains") ?: obj.optJSONArray("results") ?: JSONArray()
-                                    var added = false
                                     for (i in 0 until arr.length()) {
                                         val item = arr.opt(i)
                                         val candidate = if (item is JSONObject) item.optString("domain") else item.toString()
                                         candidate.trim().lowercase().removePrefix("https://").removePrefix("http://").substringBefore('/').trimEnd('.')
                                             .takeIf { it.isNotBlank() && it.contains('.') && !it.contains(':') && !it.contains(' ') }
-                                            ?.let { if (seen.add(it)) added = true }
+                                            ?.let(seen::add)
                                     }
-                                    if (added) withContext(Dispatchers.Main.immediate) { publishDiscovered() }
                                     obj.optString("error").takeIf { it.isNotBlank() }?.let { failures.add(source) }
                                 }.onFailure { failures.add(source) }
                             }
@@ -125,6 +95,7 @@ class GhiSession(context: Context) {
                 }
             }
 
+            // Bounded validation always runs, including country-world results.
             val candidates = seen.toList().take(limit * 4)
             if (candidates.isNotEmpty()) {
                 val workerCount = minOf(validationThreads(), candidates.size).coerceAtLeast(1)
@@ -134,11 +105,13 @@ class GhiSession(context: Context) {
                     launch(Dispatchers.IO) {
                         for (candidate in queue) {
                             if (!isActive || accepted.size >= limit) continue
-                            val analyzed = runCatching { JSONObject(GhiMobileBridge.analyzeHostWithOptions(candidate, validationTimeout(), userAgent())) }.getOrNull() ?: continue
+                            val analyzed = runCatching {
+                                JSONObject(GhiMobileBridge.analyzeHostWithOptions(candidate, validationTimeout(), userAgent()))
+                            }.getOrNull() ?: continue
                             val https = analyzed.optInt("https_status", -1)
                             val http = analyzed.optInt("http_status", -1)
                             val code = when { https in 200..399 -> https; http in 200..399 -> http; else -> -1 }
-                            if (code in 200..399) accepted.putIfAbsent(candidate, DomainPing(candidate, analyzed.optLong("elapsed_ms", 0L), code, true))
+                            if (code in 200..399) accepted.putIfAbsent(candidate, DomainPing(candidate, analyzed.optLong("elapsed_ms", 0L), code))
                         }
                     }
                 }
@@ -156,6 +129,8 @@ class GhiSession(context: Context) {
                 workers.joinAll()
                 publisher.cancelAndJoin()
                 _liveResults.value = accepted.values.sortedBy { it.domain }.take(limit)
+            } else {
+                _liveResults.value = emptyList()
             }
             _elapsedMs.value = System.currentTimeMillis() - started
             if (isActive) {
@@ -163,7 +138,7 @@ class GhiSession(context: Context) {
                     _liveResults.value.size >= limit -> "COMPLETED"
                     _liveResults.value.isNotEmpty() && failures.isNotEmpty() -> "PARTIAL"
                     _liveResults.value.isNotEmpty() -> "COMPLETED"
-                    failures.isNotEmpty() -> "PARTIAL"
+                    failures.isNotEmpty() -> "FAILED"
                     else -> "COMPLETED"
                 }
             }
@@ -189,7 +164,7 @@ class GhiSession(context: Context) {
         val current = _liveResults.value
         return when (format.lowercase()) {
             "csv" -> buildString { appendLine("domain,status,latency_ms"); current.forEach { appendLine("${it.domain},${it.status},${it.latencyMs}") } }
-            "json" -> JSONArray(current.map { JSONObject().apply { put("domain", it.domain); put("status", it.status); put("latency_ms", it.latencyMs); put("live", it.live) } }).toString(2)
+            "json" -> JSONArray(current.map { JSONObject().apply { put("domain", it.domain); put("status", it.status); put("latency_ms", it.latencyMs) } }).toString(2)
             else -> current.joinToString("\n") { it.domain }
         }
     }
@@ -219,6 +194,6 @@ class GhiSession(context: Context) {
     fun resetSettings() = prefs.edit().clear().apply()
 
     companion object {
-        val DEFAULT_SOURCES = linkedSetOf("urlscan","crt.sh","crt.name","ctlogs.dev","certspotter","rapiddns","anubis","subdomain.center","hackertarget","wayback","threatminer","commoncrawl","otx","subdomain.app","sonar","riddler","jldc","sublist3r","country","urlscan-country")
+        val DEFAULT_SOURCES = linkedSetOf("urlscan","crt.sh","crt.name","ctlogs.dev","certspotter","rapiddns","anubis","subdomain.center","hackertarget","wayback","threatminer","commoncrawl","otx","subdomain.app","sonar","riddler","jldc","sublist3r","country")
     }
 }

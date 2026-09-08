@@ -11,8 +11,7 @@ import io.ciphertun.ghi.core.ui.navigation.GhiRoute
 fun GhiNavHost(navController: NavHostController = rememberNavController()) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val session = remember(context) { GhiSession(context.applicationContext) }
-    val liveResults by session.liveResults.collectAsState()
-    val discoveredResults by session.discoveredResults.collectAsState()
+    val results by session.liveResults.collectAsState()
     val status by session.status.collectAsState()
     val error by session.error.collectAsState()
     val elapsed by session.elapsedMs.collectAsState()
@@ -20,16 +19,9 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
     NavHost(navController, startDestination = GhiRoute.DISCOVER) {
         composable(GhiRoute.DISCOVER) {
             DiscoverScreen(
-                discoveredResults = discoveredResults,
-                liveResults = liveResults,
-                running = status == "RUNNING",
-                status = status,
-                error = error,
-                elapsedMs = elapsed,
-                enabledSources = session.enabledSources(),
-                onStart = { q, m -> session.startDiscovery(q, m) },
-                onStop = session::stopDiscovery,
-                onAnalyze = session::analyze
+                results, status == "RUNNING", status, error, elapsed, session.enabledSources(),
+                { q, m -> session.startDiscovery(q, m) },
+                session::stopDiscovery
             )
         }
         composable(GhiRoute.SUBDOMAINS) { SubdomainsScreen(session::discoverSubdomains) }
@@ -39,16 +31,22 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
         composable(GhiRoute.DNS) { DnsInspectorScreen(session::inspectDns) }
         composable(GhiRoute.CERTIFICATES) { CertificateSearchScreen(session::searchCertificates) }
         composable(GhiRoute.PAYLOADS) { PayloadGeneratorScreen() }
-        composable(GhiRoute.EXPORT) { ExportScreen(liveResults, session::exportResults) }
+        composable(GhiRoute.EXPORT) { ExportScreen(results, session::exportResults) }
         composable(GhiRoute.SOURCES) { DiscoverySourcesScreen(session.enabledSources(), session::saveSources) }
         composable(GhiRoute.SETTINGS) {
             SettingsScreen(
-                session.discoveryLimit(), session.validationThreads(), session.sourceParallelism(),
-                session.validationTimeout(), session.userAgent(), session.enabledSources(),
-                session.animationsEnabled(), session.compactResults(),
+                session.discoveryLimit(),
+                session.validationThreads(),
+                session.sourceParallelism(),
+                session.validationTimeout(),
+                session.userAgent(),
+                session.enabledSources(),
+                session.animationsEnabled(),
+                session.compactResults(),
                 { limit, threads, parallel, timeout, agent, sources, animations, compact ->
                     session.saveSettings(limit, threads, parallel, timeout, agent, sources, animations, compact)
-                }, session::resetSettings
+                },
+                session::resetSettings
             )
         }
     }

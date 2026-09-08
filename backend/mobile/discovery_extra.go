@@ -30,7 +30,9 @@ func discoverRaw(c *http.Client, q, source string, limit int) ([]string, error) 
 		return wayback(c, q, limit)
 	case "threatminer":
 		return threatMiner(c, q, limit)
-	case "urlscan":
+	case "urlscan-country":
+		return urlscanCountrySource(c, q, limit)
+case "urlscan":
 		return urlscan(c, q, limit)
 	case "rapiddns":
 		return rapiddns(c, q, limit)

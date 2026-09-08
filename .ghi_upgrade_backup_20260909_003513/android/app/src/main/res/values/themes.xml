@@ -2,7 +2,7 @@
 <resources>
     <style name="Theme.GlobalHostIntelligence" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#050A14</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ghi_launcher_animated</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ghi_discovery_icon</item>
         <item name="postSplashScreenTheme">@style/Theme.GlobalHostIntelligence.App</item>
     </style>
     <style name="Theme.GlobalHostIntelligence.App" parent="android:style/Theme.Material.NoActionBar">

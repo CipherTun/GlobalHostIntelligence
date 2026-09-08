@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#07111F" android:pathData="M54,10A44,44 0,1 0,54 98A44,44 0,1 0,54 10"/>
+    <path android:fillColor="#20BFFF" android:pathData="M54,19A35,35 0,1 0,54 89A35,35 0,1 0,54 19M54,25A29,29 0,1 1,54 83A29,29 0,1 1,54 25"/>
+    <path android:fillColor="#43E0FF" android:pathData="M54,25C45,34 41,43 41,54C41,65 45,74 54,83C63,74 67,65 67,54C67,43 63,34 54,25M54,31C59,38 61,46 61,54C61,62 59,70 54,77C49,70 47,62 47,54C47,46 49,38 54,31"/>
+    <path android:fillColor="#43E0FF" android:pathData="M27,49C36,46 45,44 54,44C63,44 72,46 81,49V55C72,52 63,50 54,50C45,50 36,52 27,55z"/>
+    <group android:name="networkGroup" android:pivotX="54" android:pivotY="54">
+        <path android:fillColor="#7A8CFF" android:pathData="M23,70L36,57L41,62L29,74zM69,53L84,38L89,43L74,58z"/>
+        <path android:fillColor="#00E676" android:pathData="M67,70L75,78L90,61L95,66L75,88L62,75z"/>
+        <path android:fillColor="#FFFFFF" android:pathData="M31,31A5,5 0,1 0,31.1,31zM78,28A4,4 0,1 0,78.1,28zM22,78A3,3 0,1 0,22.1,78z"/>
+    </group>
+</vector>

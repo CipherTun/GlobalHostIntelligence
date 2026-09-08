@@ -26,23 +26,23 @@ import kotlinx.coroutines.launch
 
 private data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
-// Keep the product surface focused: six primary tools. The deeper TLS/DNS/
-// certificate/export routes remain available to the implementation for inline
-// details and future deep links, but are not promoted to the main launcher UI.
 private val toolLevel = listOf(
-    NavItem(GhiRoute.DISCOVER, "Discovery", Icons.Filled.Explore),
+    NavItem(GhiRoute.DISCOVER, "Discover", Icons.Filled.Explore),
     NavItem(GhiRoute.SUBDOMAINS, "Subdomains", Icons.Filled.Dns),
-    NavItem(GhiRoute.RESPONSE, "Response Checker", Icons.Filled.Language),
     NavItem(GhiRoute.IP_TOOLS, "IP / Domain", Icons.Filled.Public),
+    NavItem(GhiRoute.RESPONSE, "HTTP Analyzer", Icons.Filled.Language),
+    NavItem(GhiRoute.TLS, "TLS / SSL", Icons.Filled.Security),
+    NavItem(GhiRoute.DNS, "DNS Inspector", Icons.Filled.Dns),
+    NavItem(GhiRoute.CERTIFICATES, "Certificates", Icons.Filled.VerifiedUser),
     NavItem(GhiRoute.PAYLOADS, "Payload Generator", Icons.Filled.Bolt),
-    NavItem(GhiRoute.SETTINGS, "Settings", Icons.Filled.Settings)
+    NavItem(GhiRoute.EXPORT, "Export Results", Icons.Filled.FileDownload)
 )
 
 private val bottomLevel = listOf(
     GhiRoute.DISCOVER,
-    GhiRoute.SUBDOMAINS,
+    GhiRoute.IP_TOOLS,
     GhiRoute.RESPONSE,
-    GhiRoute.IP_TOOLS
+    GhiRoute.TLS
 ).mapNotNull { route -> toolLevel.firstOrNull { it.route == route } }
 
 @Composable
@@ -75,18 +75,24 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                             .padding(20.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(painterResource(R.drawable.ghi_globe), "Global Host Intelligence", Modifier.size(52.dp))
+                            Image(painterResource(R.drawable.ghi_globe), "GHI globe", Modifier.size(52.dp))
                             Spacer(Modifier.width(12.dp))
                             Column {
                                 Text("GLOBAL HOST", fontWeight = FontWeight.ExtraBold)
                                 Text("INTELLIGENCE", color = GhiAccentBlue, fontWeight = FontWeight.ExtraBold)
-                                Text("NETWORK INTELLIGENCE", color = GhiAccentCyan, style = MaterialTheme.typography.labelSmall)
+                                Text("TOOLS", color = GhiAccentCyan, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
+
                     LazyColumn(Modifier.weight(1f).padding(10.dp)) {
                         item {
-                            Text("TOOLS", Modifier.padding(12.dp), color = GhiSlate500, style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                "NETWORK INTELLIGENCE TOOLS",
+                                Modifier.padding(12.dp),
+                                color = GhiSlate500,
+                                style = MaterialTheme.typography.labelSmall
+                            )
                         }
                         toolLevel.forEach { navItem ->
                             item {
@@ -98,6 +104,31 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                                     modifier = Modifier.padding(vertical = 2.dp)
                                 )
                             }
+                        }
+                        item {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "CONFIGURATION",
+                                Modifier.padding(12.dp),
+                                color = GhiSlate500,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Discovery Sources") },
+                                selected = route == GhiRoute.SOURCES,
+                                onClick = { go(GhiRoute.SOURCES) },
+                                icon = { Icon(Icons.Filled.Source, null) }
+                            )
+                        }
+                        item {
+                            NavigationDrawerItem(
+                                label = { Text("Settings") },
+                                selected = route == GhiRoute.SETTINGS,
+                                onClick = { go(GhiRoute.SETTINGS) },
+                                icon = { Icon(Icons.Filled.Settings, null) }
+                            )
                         }
                     }
                 }
@@ -123,7 +154,7 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                 Box(Modifier.fillMaxSize().padding(padding)) {
                     Box(
                         Modifier.fillMaxWidth().height(180.dp)
-                            .background(Brush.radialGradient(listOf(GhiNavy700.copy(alpha = .30f), GhiInk950)))
+                            .background(Brush.radialGradient(listOf(GhiNavy700.copy(alpha = .28f), GhiInk950)))
                     )
                     GhiNavHost(navController)
                 }
