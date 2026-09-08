@@ -94,15 +94,17 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
-                        toolLevel.forEach { item {
-                            NavigationDrawerItem(
-                                label = { Text(item.label) },
-                                selected = route == item.route,
-                                onClick = { go(item.route) },
-                                icon = { Icon(item.icon, null) },
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }}
+                        toolLevel.forEach { navItem ->
+                            item {
+                                NavigationDrawerItem(
+                                    label = { Text(navItem.label) },
+                                    selected = route == navItem.route,
+                                    onClick = { go(navItem.route) },
+                                    icon = { Icon(navItem.icon, null) },
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                        }
                         item {
                             Spacer(Modifier.height(12.dp))
                             Text(
