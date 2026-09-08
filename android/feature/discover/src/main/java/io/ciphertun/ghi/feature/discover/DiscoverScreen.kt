@@ -153,7 +153,7 @@ private fun DomainResultCard(result: DomainPing, isLive: Boolean, onAnalyze: (St
     }
 }
 
-@Composable private fun DetailLine(label: String, value: String) { Row(Modifier.fillMaxWidth()) { Text(label, Modifier.width(105.dp), color = GhiSlate400, style = MaterialTheme.typography.bodySmall); Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodySmall) } }
+@Composable private fun DetailLine(label: String, value: String) { Row(Modifier.fillMaxWidth()) { Text(label, Modifier.width(105.dp), color = GhiSlate500, style = MaterialTheme.typography.bodySmall); Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodySmall) } }
 private fun statusText(code: Int): String = if (code > 0) code.toString() else "—"
 private fun latencyColor(ms: Long) = when { ms <= 80 -> GhiSignalGreen; ms <= 200 -> GhiSignalAmber; else -> GhiSignalRed }
 @Composable private fun FilterButton(label: String, selected: Boolean, onClick: () -> Unit) { if (selected) Button(onClick = onClick) { Text(label) } else OutlinedButton(onClick = onClick) { Text(label) } }
