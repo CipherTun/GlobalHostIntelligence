@@ -15,9 +15,13 @@ object GhiMobileBridge {
             val adapted = method.parameterTypes.mapIndexed { index, type ->
                 val value = args[index]
                 if (value is Number) when (type) {
-                    java.lang.Integer.TYPE -> value.toInt(); java.lang.Long.TYPE -> value.toLong()
-                    java.lang.Short.TYPE -> value.toShort(); java.lang.Byte.TYPE -> value.toByte()
-                    java.lang.Double.TYPE -> value.toDouble(); java.lang.Float.TYPE -> value.toFloat(); else -> value
+                    java.lang.Integer.TYPE -> value.toInt()
+                    java.lang.Long.TYPE -> value.toLong()
+                    java.lang.Short.TYPE -> value.toShort()
+                    java.lang.Byte.TYPE -> value.toByte()
+                    java.lang.Double.TYPE -> value.toDouble()
+                    java.lang.Float.TYPE -> value.toFloat()
+                    else -> value
                 } else value
             }.toTypedArray()
             method.invoke(null, *adapted)?.toString().orEmpty()
@@ -42,4 +46,8 @@ object GhiMobileBridge {
     fun resolveIp(value: String) = invoke("resolveIP", value)
     fun generateRequest(method: String, host: String, path: String, body: String) = invoke("generateRequest", method, host, path, body)
     fun generateNetworkRequest(network: String, method: String, host: String, path: String, body: String) = invoke("generateNetworkRequest", network, method, host, path, body)
+
+    fun analyzeTls(host: String) = invoke("analyzeTLS", host)
+    fun inspectDns(host: String) = invoke("inspectDNS", host)
+    fun searchCertificates(domain: String) = invoke("searchCertificates", domain)
 }

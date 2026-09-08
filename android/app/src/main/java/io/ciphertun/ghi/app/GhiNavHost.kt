@@ -17,16 +17,37 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
     val elapsed by session.elapsedMs.collectAsState()
 
     NavHost(navController, startDestination = GhiRoute.DISCOVER) {
-        composable(GhiRoute.DISCOVER) { DiscoverScreen(results, status == "RUNNING", status, error, elapsed, session.enabledSources(), { q,m -> session.startDiscovery(q,m) }, session::stopDiscovery) }
+        composable(GhiRoute.DISCOVER) {
+            DiscoverScreen(
+                results, status == "RUNNING", status, error, elapsed, session.enabledSources(),
+                { q, m -> session.startDiscovery(q, m) },
+                session::stopDiscovery
+            )
+        }
         composable(GhiRoute.SUBDOMAINS) { SubdomainsScreen(session::discoverSubdomains) }
         composable(GhiRoute.IP_TOOLS) { IpToolsScreen(session::resolve, session::resolveIp) }
         composable(GhiRoute.RESPONSE) { ResponseScreen(session::analyze, session::checkResponse) }
+        composable(GhiRoute.TLS) { TlsAnalyzerScreen(session::analyzeTls) }
+        composable(GhiRoute.DNS) { DnsInspectorScreen(session::inspectDns) }
+        composable(GhiRoute.CERTIFICATES) { CertificateSearchScreen(session::searchCertificates) }
         composable(GhiRoute.PAYLOADS) { PayloadGeneratorScreen() }
         composable(GhiRoute.EXPORT) { ExportScreen(results, session::exportResults) }
         composable(GhiRoute.SOURCES) { DiscoverySourcesScreen(session.enabledSources(), session::saveSources) }
         composable(GhiRoute.SETTINGS) {
-            SettingsScreen(session.discoveryLimit(), session.validationThreads(), session.sourceParallelism(), session.validationTimeout(), session.userAgent(), session.enabledSources(), session.animationsEnabled(), session.compactResults(),
-                { limit, threads, parallel, timeout, agent, sources, animations, compact -> session.saveSettings(limit, threads, parallel, timeout, agent, sources, animations, compact) }, session::resetSettings)
+            SettingsScreen(
+                session.discoveryLimit(),
+                session.validationThreads(),
+                session.sourceParallelism(),
+                session.validationTimeout(),
+                session.userAgent(),
+                session.enabledSources(),
+                session.animationsEnabled(),
+                session.compactResults(),
+                { limit, threads, parallel, timeout, agent, sources, animations, compact ->
+                    session.saveSettings(limit, threads, parallel, timeout, agent, sources, animations, compact)
+                },
+                session::resetSettings
+            )
         }
     }
 }
