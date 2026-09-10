@@ -170,12 +170,40 @@ jobs:
         run: |
           printf 'sdk.dir=%s\n' "$ANDROID_HOME" > android/local.properties
 
+      - name: Decode release signing values
+        id: decode-signing
+        shell: bash
+        env:
+          STORE_PASSWORD_B64: ${{ secrets.GHI_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS_B64: ${{ secrets.GHI_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD_B64: ${{ secrets.GHI_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          test -n "$STORE_PASSWORD_B64"
+          test -n "$KEY_ALIAS_B64"
+          test -n "$KEY_PASSWORD_B64"
+
+          STORE_PASSWORD="$(printf '%s' "$STORE_PASSWORD_B64" | base64 --decode)"
+          KEY_ALIAS="$(printf '%s' "$KEY_ALIAS_B64" | base64 --decode)"
+          KEY_PASSWORD="$(printf '%s' "$KEY_PASSWORD_B64" | base64 --decode)"
+
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+
+          {
+            echo "store_password=$STORE_PASSWORD"
+            echo "key_alias=$KEY_ALIAS"
+            echo "key_password=$KEY_PASSWORD"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Unit tests
         env:
           GHI_RELEASE_STORE_FILE: ${{ runner.temp }}/ghi-signing/GlobalHostInteligence-release.keystore
-          GHI_RELEASE_STORE_PASSWORD: ${{ secrets.GHI_RELEASE_STORE_PASSWORD }}
-          GHI_RELEASE_KEY_ALIAS: ${{ secrets.GHI_RELEASE_KEY_ALIAS }}
-          GHI_RELEASE_KEY_PASSWORD: ${{ secrets.GHI_RELEASE_KEY_PASSWORD }}
+          GHI_RELEASE_STORE_PASSWORD: ${{ steps.decode-signing.outputs.store_password }}
+          GHI_RELEASE_KEY_ALIAS: ${{ steps.decode-signing.outputs.key_alias }}
+          GHI_RELEASE_KEY_PASSWORD: ${{ steps.decode-signing.outputs.key_password }}
         run: |
           cd android
           gradle testDebugUnitTest \
