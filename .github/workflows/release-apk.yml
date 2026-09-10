@@ -1,18 +1,22 @@
-name: Android Build & Test
+name: GHI Release APK
 
 on:
   workflow_dispatch: {}
   workflow_run:
     workflows: ["Mobile Core Library (AAR)"]
     types: [completed]
-    branches: [main, dev]
+    branches: [main]
 
 permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: ghi-release-apk
+  cancel-in-progress: false
+
 jobs:
-  build-and-test:
+  release:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
@@ -22,31 +26,32 @@ jobs:
         id: aar-run
         env:
           GH_TOKEN: ${{ github.token }}
-        working-directory: .
         run: |
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             echo "run_id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+            echo "source_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
           else
             RUN_ID="$(gh run list --workflow mobile-lib-build.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
             test -n "$RUN_ID"
+            SOURCE_SHA="$(gh run view "$RUN_ID" --json headSha --jq '.headSha')"
             echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout source used by AAR build
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ steps.aar-run.outputs.source_sha }}
+          fetch-depth: 1
 
-      - name: Download AAR from Mobile Core Library workflow
+      - name: Download matching GHI core AAR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd android
           rm -rf ../aar-artifact
           mkdir -p ../aar-artifact
-          gh run download "${{ steps.aar-run.outputs.run_id }}" \
-            --name ghi-core-aar \
-            --dir ../aar-artifact
+          gh run download "${{ steps.aar-run.outputs.run_id }}" --name ghi-core-aar --dir ../aar-artifact
           test -f ../aar-artifact/ghicore.aar
           rm -rf core/crawlercore/libs core/crawlercore/src/main/jniLibs
           mkdir -p core/crawlercore/libs core/crawlercore/src/main/jniLibs
@@ -67,24 +72,46 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "9.7.1"
+          cache-read-only: false
+
+      - name: Restore release keystore
+        env:
+          GHI_RELEASE_KEYSTORE_B64: ${{ secrets.GHI_RELEASE_KEYSTORE_B64 }}
+        run: |
+          test -n "$GHI_RELEASE_KEYSTORE_B64"
+          mkdir -p "$RUNNER_TEMP/ghi-signing"
+          printf '%s' "$GHI_RELEASE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
+          test -s "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
 
       - name: Unit tests
+        env:
+          GHI_RELEASE_STORE_FILE: ${{ runner.temp }}/ghi-signing/GlobalHostInteligence-release.keystore
+          GHI_RELEASE_STORE_PASSWORD: ${{ secrets.GHI_RELEASE_STORE_PASSWORD }}
+          GHI_RELEASE_KEY_ALIAS: ${{ secrets.GHI_RELEASE_KEY_ALIAS }}
+          GHI_RELEASE_KEY_PASSWORD: ${{ secrets.GHI_RELEASE_KEY_PASSWORD }}
         run: cd android && gradle testDebugUnitTest --stacktrace --no-daemon
 
-      - name: Assemble debug APK
-        run: cd android && gradle assembleDebug --stacktrace --no-daemon
+      - name: Build signed release APK
+        env:
+          GHI_RELEASE_STORE_FILE: ${{ runner.temp }}/ghi-signing/GlobalHostInteligence-release.keystore
+          GHI_RELEASE_STORE_PASSWORD: ${{ secrets.GHI_RELEASE_STORE_PASSWORD }}
+          GHI_RELEASE_KEY_ALIAS: ${{ secrets.GHI_RELEASE_KEY_ALIAS }}
+          GHI_RELEASE_KEY_PASSWORD: ${{ secrets.GHI_RELEASE_KEY_PASSWORD }}
+        run: cd android && gradle assembleRelease --stacktrace --no-daemon
 
-      - name: Verify native ABIs in APK
+      - name: Verify release APK
         run: |
-          cd android
-          APK="app/build/outputs/apk/debug/$(ls app/build/outputs/apk/debug/*.apk | xargs -n1 basename | head -1)"
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -n "$APK"
+          test -s "$APK"
           unzip -l "$APK" | grep -q 'lib/armeabi-v7a/libgojni.so'
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
-          echo "Verified: APK contains armeabi-v7a + arm64-v8a native libraries"
+          echo "Verified native ABIs: armeabi-v7a + arm64-v8a"
 
-      - name: Upload debug APK
+      - name: Upload signed release APK
         uses: actions/upload-artifact@v4
         with:
-          name: ghi-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: ghi-release-apk-v2.4.1
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+          retention-days: 30

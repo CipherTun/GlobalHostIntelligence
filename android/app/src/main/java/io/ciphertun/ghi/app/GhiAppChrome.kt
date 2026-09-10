@@ -1,5 +1,6 @@
 package io.ciphertun.ghi.app
 
+import android.app.Activity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -15,6 +16,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -22,13 +24,11 @@ import io.ciphertun.ghi.R
 import io.ciphertun.ghi.core.designsystem.*
 import io.ciphertun.ghi.core.ui.components.LocalGhiOpenDrawer
 import io.ciphertun.ghi.core.ui.navigation.GhiRoute
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
-// Keep the product surface focused: six primary tools. The deeper TLS/DNS/
-// certificate/export routes remain available to the implementation for inline
-// details and future deep links, but are not promoted to the main launcher UI.
 private val toolLevel = listOf(
     NavItem(GhiRoute.DISCOVER, "Discovery", Icons.Filled.Explore),
     NavItem(GhiRoute.SUBDOMAINS, "Subdomains", Icons.Filled.Dns),
@@ -46,6 +46,47 @@ private val bottomLevel = listOf(
 ).mapNotNull { route -> toolLevel.firstOrNull { it.route == route } }
 
 @Composable
+private fun GhiAutomaticAdHost(route: String?) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    var showPrompt by remember { mutableStateOf(false) }
+    val currentRoute by rememberUpdatedState(route)
+
+    LaunchedEffect(Unit) {
+        GhiAdManager.preload(context)
+        while (true) {
+            delay(1_000L)
+            if (currentRoute != GhiRoute.SETTINGS && activity != null && !showPrompt && GhiAdManager.shouldOffer()) {
+                showPrompt = true
+            }
+        }
+    }
+
+    if (showPrompt && activity != null) {
+        AlertDialog(
+            onDismissRequest = { showPrompt = false },
+            title = { Text("Sponsored message") },
+            text = {
+                Text(
+                    "Watch a short sponsored video to support Global Host Intelligence. " +
+                        "After completion, you receive 60 seconds without another automatic ad. " +
+                        "You can choose Not now."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPrompt = false
+                    GhiAdManager.show(activity)
+                }) { Text("Watch") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPrompt = false }) { Text("Not now") }
+            }
+        )
+    }
+}
+
+@Composable
 fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -60,6 +101,8 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
             popUpTo(GhiRoute.DISCOVER) { saveState = true }
         }
     }
+
+    GhiAutomaticAdHost(route)
 
     ModalNavigationDrawer(
         drawerState = drawer,
@@ -111,14 +154,14 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                     Column {
                         GhiAdBanner()
                         NavigationBar(containerColor = GhiInk900, tonalElevation = 0.dp) {
-                        bottomLevel.forEach { item ->
-                            NavigationBarItem(
-                                selected = route == item.route,
-                                onClick = { go(item.route) },
-                                icon = { Icon(item.icon, item.label) },
-                                label = { Text(item.label, maxLines = 1) }
-                            )
-                        }
+                            bottomLevel.forEach { item ->
+                                NavigationBarItem(
+                                    selected = route == item.route,
+                                    onClick = { go(item.route) },
+                                    icon = { Icon(item.icon, item.label) },
+                                    label = { Text(item.label, maxLines = 1) }
+                                )
+                            }
                         }
                     }
                 }
