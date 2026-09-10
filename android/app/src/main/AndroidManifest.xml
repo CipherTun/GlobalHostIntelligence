@@ -12,6 +12,9 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.GlobalHostIntelligence">
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3583424243110322~3915269208" />
         <activity
             android:name=".app.MainActivity"
             android:exported="true"

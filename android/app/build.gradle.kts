@@ -69,6 +69,9 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-splashscreen:1.2.0")
 
+    // Google Mobile Ads SDK — verified against Google's current Android examples.
+    implementation("com.google.android.gms:play-services-ads:25.4.0")
+
     // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

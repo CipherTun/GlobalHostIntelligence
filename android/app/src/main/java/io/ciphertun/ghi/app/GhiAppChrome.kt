@@ -108,7 +108,9 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
             Scaffold(
                 containerColor = GhiInk950,
                 bottomBar = {
-                    NavigationBar(containerColor = GhiInk900, tonalElevation = 0.dp) {
+                    Column {
+                        GhiAdBanner()
+                        NavigationBar(containerColor = GhiInk900, tonalElevation = 0.dp) {
                         bottomLevel.forEach { item ->
                             NavigationBarItem(
                                 selected = route == item.route,
@@ -116,6 +118,7 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                                 icon = { Icon(item.icon, item.label) },
                                 label = { Text(item.label, maxLines = 1) }
                             )
+                        }
                         }
                     }
                 }
