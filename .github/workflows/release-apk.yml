@@ -121,6 +121,7 @@ jobs:
           echo "::add-mask::$KEY_PASSWORD"
 
           {
+            echo "GHI_RELEASE_STORE_FILE=$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
             echo "GHI_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
             echo "GHI_RELEASE_KEY_ALIAS=$KEY_ALIAS"
             echo "GHI_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
