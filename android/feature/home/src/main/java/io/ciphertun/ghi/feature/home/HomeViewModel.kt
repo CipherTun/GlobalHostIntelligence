@@ -20,13 +20,6 @@ class HomeViewModel @Inject constructor() : ViewModel() {
     private val _dnsTestResult = MutableStateFlow<String?>(null)
     val dnsTestResult: StateFlow<String?> = _dnsTestResult.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            _corePingResult.value = withContext(Dispatchers.Default) {
-                runCatching { GhiMobileBridge.ping() }
-                    .getOrElse { "core library unavailable: ${it.message ?: "unknown error"}" }
-            }
-        }
     }
 
     fun runDnsTest(fqdn: String) {
