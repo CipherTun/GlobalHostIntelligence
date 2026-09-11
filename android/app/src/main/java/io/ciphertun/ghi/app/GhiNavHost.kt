@@ -10,6 +10,7 @@ import io.ciphertun.ghi.core.ui.navigation.GhiRoute
 @Composable
 fun GhiNavHost(navController: NavHostController = rememberNavController()) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? android.app.Activity
     val session = remember(context) { GhiSession(context.applicationContext) }
     val liveResults by session.liveResults.collectAsState()
     val discoveredResults by session.discoveredResults.collectAsState()
@@ -48,7 +49,8 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
                 session.animationsEnabled(), session.compactResults(),
                 { limit, threads, parallel, timeout, agent, sources, animations, compact ->
                     session.saveSettings(limit, threads, parallel, timeout, agent, sources, animations, compact)
-                }, session::resetSettings
+                }, session::resetSettings,
+                onPrivacyOptions = { if (activity != null) GhiAdManager.showPrivacyOptions(activity) }
             )
         }
     }

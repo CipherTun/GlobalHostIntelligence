@@ -6,273 +6,179 @@ import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.MainThread
 import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd
 import com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoadCallback
-import java.util.concurrent.atomic.AtomicBoolean
+import com.google.android.ump.UserMessagingPlatform
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Centralized AdMob controller for GHI.
+ * GHI's isolated advertising controller.
  *
- * Advertising is optional. Any AdMob/Google Play services failure is isolated
- * from the application so GHI can still start and operate normally.
+ * Ads are deliberately kept outside the discovery/core execution path. A Google
+ * Mobile Ads failure must never prevent the app or embedded Go engine from
+ * starting or operating.
  */
 object GhiAdManager {
     private const val TAG = "GhiAdManager"
-    private const val PRODUCTION_AD_UNIT_ID =
+    private const val PRODUCTION_REWARDED_INTERSTITIAL =
         "ca-app-pub-3583424243110322/6776449846"
-    private const val TEST_AD_UNIT_ID =
+    private const val TEST_REWARDED_INTERSTITIAL =
         "ca-app-pub-3940256099942544/5354046379"
 
-    private const val COOLDOWN_MS = 30_000L
+    private const val COOLDOWN_MS = 60_000L
+    private const val REWARD_MS = 60_000L
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val initializing = AtomicBoolean(false)
+    private val _offerVisible = MutableStateFlow(false)
+    val offerVisible: StateFlow<Boolean> = _offerVisible.asStateFlow()
+    private val _ready = MutableStateFlow(false)
+    val ready: StateFlow<Boolean> = _ready.asStateFlow()
 
-    @Volatile
-    private var initialized = false
-
-    @Volatile
-    private var initializationFailed = false
-
-    @Volatile
-    private var rewardedInterstitial: RewardedInterstitialAd? = null
-
-    @Volatile
-    private var loading = false
-
-    private var showing = false
-    private var lastShownAt = 0L
-    private var lastOfferAt = 0L
-    private var adFreeUntil = 0L
-
-    private val lock = Any()
-    private val readyCallbacks = mutableListOf<() -> Unit>()
+    @Volatile private var initialized = false
+    @Volatile private var canRequestAds = false
+    @Volatile private var loading = false
+    @Volatile private var rewardedInterstitial: RewardedInterstitialAd? = null
+    @Volatile private var lastShownAt = 0L
+    @Volatile private var adFreeUntil = 0L
+    @Volatile private var lastOfferAt = 0L
 
     private fun isDebug(context: Context): Boolean =
         (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     private fun adUnitId(context: Context): String =
-        if (isDebug(context)) TEST_AD_UNIT_ID else PRODUCTION_AD_UNIT_ID
+        if (isDebug(context)) TEST_REWARDED_INTERSTITIAL else PRODUCTION_REWARDED_INTERSTITIAL
 
-    fun initialize(context: Context) {
-        if (initialized ||
-            initializationFailed ||
-            !initializing.compareAndSet(false, true)
-        ) {
+    /** Must be called from the main thread after UMP consent has been updated. */
+    @MainThread
+    fun initialize(context: Context, adsAllowed: Boolean) {
+        if (initialized || !adsAllowed) {
+            canRequestAds = adsAllowed
             return
         }
 
+        canRequestAds = true
         val appContext = context.applicationContext
-
-        Thread {
-            try {
-                MobileAds.initialize(appContext) {
-                    initialized = true
-                    initializing.set(false)
-
-                    Log.d(TAG, "Google Mobile Ads initialized")
-
-                    val callbacks = synchronized(lock) {
-                        val pending = readyCallbacks.toList()
-                        readyCallbacks.clear()
-                        pending
-                    }
-
-                    callbacks.forEach { callback ->
-                        mainHandler.post {
-                            try {
-                                callback()
-                            } catch (t: Throwable) {
-                                Log.w(TAG, "Ad-ready callback failed", t)
-                            }
-                        }
-                    }
-
-                    mainHandler.post {
-                        preload(appContext)
-                    }
-                }
-            } catch (t: Throwable) {
-                initializing.set(false)
-                initializationFailed = true
-
-                Log.e(
-                    TAG,
-                    "Google Mobile Ads initialization failed; continuing without ads",
-                    t
-                )
-
-                synchronized(lock) {
-                    readyCallbacks.clear()
-                }
+        try {
+            MobileAds.initialize(appContext) {
+                initialized = true
+                _ready.value = true
+                mainHandler.post { preload(appContext) }
+                Log.d(TAG, "Google Mobile Ads initialized")
             }
-        }.start()
+        } catch (t: Throwable) {
+            // Keep ads optional. Never propagate an SDK failure into app startup.
+            initialized = false
+            canRequestAds = false
+            _ready.value = false
+            Log.e(TAG, "Ad SDK initialization failed; continuing without ads", t)
+        }
     }
 
-    fun whenReady(
-        context: Context,
-        callback: () -> Unit
-    ) {
-        if (initialized) {
-            mainHandler.post {
-                try {
-                    callback()
-                } catch (t: Throwable) {
-                    Log.w(TAG, "Ad-ready callback failed", t)
-                }
-            }
-            return
-        }
-
-        synchronized(lock) {
-            if (initialized) {
-                mainHandler.post {
-                    try {
-                        callback()
-                    } catch (t: Throwable) {
-                        Log.w(TAG, "Ad-ready callback failed", t)
-                    }
-                }
-            } else if (!initializationFailed) {
-                readyCallbacks += callback
-            }
-        }
-
-        initialize(context)
-    }
-
-    fun isInitialized(): Boolean = initialized
-
+    @MainThread
     fun preload(context: Context) {
-        if (!initialized ||
-            initializationFailed ||
-            loading ||
-            rewardedInterstitial != null
-        ) {
-            return
-        }
-
+        if (!initialized || !canRequestAds || loading || rewardedInterstitial != null) return
         loading = true
-
         try {
             RewardedInterstitialAd.load(
                 context.applicationContext,
                 adUnitId(context),
                 AdRequest.Builder().build(),
                 object : RewardedInterstitialAdLoadCallback() {
-
-                    override fun onAdLoaded(
-                        ad: RewardedInterstitialAd
-                    ) {
+                    override fun onAdLoaded(ad: RewardedInterstitialAd) {
                         loading = false
                         rewardedInterstitial = ad
-
-                        Log.d(
-                            TAG,
-                            "Rewarded interstitial loaded"
-                        )
+                        Log.d(TAG, "Rewarded interstitial loaded")
                     }
 
-                    override fun onAdFailedToLoad(
-                        error: com.google.android.gms.ads.LoadAdError
-                    ) {
+                    override fun onAdFailedToLoad(error: LoadAdError) {
                         loading = false
                         rewardedInterstitial = null
-
-                        Log.w(
-                            TAG,
-                            "Rewarded interstitial failed: ${error.message}"
-                        )
+                        Log.w(TAG, "Rewarded interstitial unavailable: ${error.message}")
                     }
                 }
             )
         } catch (t: Throwable) {
             loading = false
             rewardedInterstitial = null
-
-            Log.e(
-                TAG,
-                "Rewarded interstitial request failed; continuing without fullscreen ad",
-                t
-            )
+            Log.e(TAG, "Rewarded interstitial request failed", t)
         }
     }
 
-    fun shouldOffer(
-        now: Long = System.currentTimeMillis()
-    ): Boolean {
-        if (!initialized || initializationFailed) return false
+    /**
+     * Requests the policy-required pre-ad intro. This never forces an ad and
+     * respects a 60-second presentation cooldown.
+     */
+    fun requestOffer(now: Long = System.currentTimeMillis()): Boolean {
+        if (!initialized || !canRequestAds) return false
         if (now < adFreeUntil) return false
-        if (showing) return false
-        if (rewardedInterstitial == null) return false
         if (now - lastShownAt < COOLDOWN_MS) return false
         if (now - lastOfferAt < COOLDOWN_MS) return false
-
+        if (rewardedInterstitial == null) return false
         lastOfferAt = now
+        _offerVisible.value = true
         return true
     }
 
-    fun show(
-        activity: Activity,
-        onFinished: () -> Unit = {}
-    ) {
-        if (!initialized ||
-            initializationFailed ||
-            showing
-        ) {
-            return
-        }
+    fun dismissOffer() {
+        _offerVisible.value = false
+    }
 
+    fun isReady(): Boolean = initialized && canRequestAds
+
+    @MainThread
+    fun show(activity: Activity, onFinished: () -> Unit = {}) {
+        _offerVisible.value = false
         val ad = rewardedInterstitial ?: run {
             preload(activity)
+            onFinished()
             return
         }
 
-        showing = true
         rewardedInterstitial = null
         lastShownAt = System.currentTimeMillis()
 
-        ad.fullScreenContentCallback =
-            object : com.google.android.gms.ads.FullScreenContentCallback() {
-
-                override fun onAdDismissedFullScreenContent() {
-                    showing = false
-                    preload(activity)
-                    onFinished()
-                }
-
-                override fun onAdFailedToShowFullScreenContent(
-                    adError: com.google.android.gms.ads.AdError
-                ) {
-                    showing = false
-                    preload(activity)
-                    onFinished()
-                }
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdDismissedFullScreenContent() {
+                preload(activity)
+                onFinished()
             }
+
+            override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
+                preload(activity)
+                onFinished()
+            }
+        }
 
         try {
             ad.show(activity) {
-                adFreeUntil =
-                    System.currentTimeMillis() + 60_000L
-
-                Log.d(
-                    TAG,
-                    "Rewarded interstitial completed; 60s ad-free reward granted"
-                )
+                // Rewarded interstitial reward: a short ad-free period. No money,
+                // premium access, or external entitlement is promised.
+                adFreeUntil = System.currentTimeMillis() + REWARD_MS
+                Log.d(TAG, "Rewarded interstitial completed; 60s ad-free reward")
             }
         } catch (t: Throwable) {
-            showing = false
-
-            Log.e(
-                TAG,
-                "Rewarded interstitial presentation failed",
-                t
-            )
-
+            Log.e(TAG, "Rewarded interstitial presentation failed", t)
             preload(activity)
             onFinished()
+        }
+    }
+
+    fun showPrivacyOptions(activity: Activity, onDismissed: () -> Unit = {}) {
+        try {
+            UserMessagingPlatform.showPrivacyOptionsForm(activity) { formError ->
+                if (formError != null) Log.w(TAG, "Privacy options: ${formError.message}")
+                onDismissed()
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Privacy options unavailable", t)
+            onDismissed()
         }
     }
 }

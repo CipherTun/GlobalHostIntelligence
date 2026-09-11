@@ -19,123 +19,60 @@ jobs:
   release:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'workflow_run' &&
-        github.event.workflow_run.conclusion == 'success'
-      )
-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Resolve matching AAR workflow run
-        id: aar-run
+      - name: Resolve matching AAR run
+        id: aar
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             RUN_ID="${{ github.event.workflow_run.id }}"
             SOURCE_SHA="${{ github.event.workflow_run.head_sha }}"
           else
             SOURCE_SHA="${{ github.sha }}"
-
-            RUN_ID="$(
-              gh run list \
-                --workflow mobile-lib-build.yml \
-                --branch main \
-                --status success \
-                --limit 100 \
-                --json databaseId,headSha \
-                --jq ".[] | select(.headSha == \"$SOURCE_SHA\") | .databaseId" \
-                | head -n 1
-            )"
-
-            test -n "$RUN_ID" || {
-              echo "::error::No successful Mobile Core Library (AAR) run exists for commit $SOURCE_SHA"
-              echo "::error::Run the Mobile Core Library workflow for this commit first."
-              exit 1
-            }
+            RUN_ID="$(gh run list --workflow mobile-lib-build.yml --branch main --status success --limit 100 --json databaseId,headSha --jq ".[] | select(.headSha == \"$SOURCE_SHA\") | .databaseId" | head -n 1)"
+            test -n "$RUN_ID" || { echo "::error::No successful AAR build exists for $SOURCE_SHA"; exit 1; }
           fi
-
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
-          echo "AAR workflow run: $RUN_ID"
-          echo "Source SHA: $SOURCE_SHA"
-
-      - name: Checkout exact source used by AAR
+      - name: Checkout exact AAR source
         uses: actions/checkout@v5
         with:
-          ref: ${{ steps.aar-run.outputs.source_sha }}
+          ref: ${{ steps.aar.outputs.source_sha }}
           fetch-depth: 1
 
-      - name: Verify source matches release request
+      - name: Verify exact source revision
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.aar.outputs.source_sha }}"
 
-          ACTUAL_SHA="$(git rev-parse HEAD)"
-          EXPECTED_SHA="${{ steps.aar-run.outputs.source_sha }}"
-
-          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
-
-          echo "Verified matching source:"
-          echo "$ACTUAL_SHA"
-
-      - name: Download matching GHI core AAR
+      - name: Download matching AAR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/aar"
+          gh run download "${{ steps.aar.outputs.run_id }}" --name ghi-core-aar --dir "$RUNNER_TEMP/aar"
+          test -s "$RUNNER_TEMP/aar/ghicore.aar"
 
-          rm -rf "$RUNNER_TEMP/aar-artifact"
-          mkdir -p "$RUNNER_TEMP/aar-artifact"
-
-          gh run download \
-            "${{ steps.aar-run.outputs.run_id }}" \
-            --name ghi-core-aar \
-            --dir "$RUNNER_TEMP/aar-artifact"
-
-          test -s "$RUNNER_TEMP/aar-artifact/ghicore.aar"
-
-          echo "Downloaded:"
-          ls -lh "$RUNNER_TEMP/aar-artifact/ghicore.aar"
-
-      - name: Inject GHI core AAR
+      - name: Inject matching AAR
         run: |
           set -euo pipefail
-
           cd android
-
-          rm -rf \
-            core/crawlercore/libs \
-            core/crawlercore/src/main/jniLibs
-
-          mkdir -p \
-            core/crawlercore/libs \
-            core/crawlercore/src/main/jniLibs
-
-          rm -rf "$RUNNER_TEMP/ghicore-expanded"
-          mkdir -p "$RUNNER_TEMP/ghicore-expanded"
-
-          unzip -q \
-            "$RUNNER_TEMP/aar-artifact/ghicore.aar" \
-            -d "$RUNNER_TEMP/ghicore-expanded"
-
-          test -s "$RUNNER_TEMP/ghicore-expanded/classes.jar"
-
-          cp \
-            "$RUNNER_TEMP/ghicore-expanded/classes.jar" \
-            core/crawlercore/libs/ghicore-classes.jar
-
-          test -d "$RUNNER_TEMP/ghicore-expanded/jni/armeabi-v7a"
-          test -d "$RUNNER_TEMP/ghicore-expanded/jni/arm64-v8a"
-
-          cp -a \
-            "$RUNNER_TEMP/ghicore-expanded/jni/." \
-            core/crawlercore/src/main/jniLibs/
-
-          echo "AAR injected successfully."
+          rm -rf core/crawlercore/libs core/crawlercore/src/main/jniLibs
+          mkdir -p core/crawlercore/libs core/crawlercore/src/main/jniLibs
+          mkdir -p "$RUNNER_TEMP/aar-expanded"
+          unzip -q "$RUNNER_TEMP/aar/ghicore.aar" -d "$RUNNER_TEMP/aar-expanded"
+          test -s "$RUNNER_TEMP/aar-expanded/classes.jar"
+          test -d "$RUNNER_TEMP/aar-expanded/jni/armeabi-v7a"
+          test -d "$RUNNER_TEMP/aar-expanded/jni/arm64-v8a"
+          cp "$RUNNER_TEMP/aar-expanded/classes.jar" core/crawlercore/libs/ghicore-classes.jar
+          cp -a "$RUNNER_TEMP/aar-expanded/jni/." core/crawlercore/src/main/jniLibs/
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -149,103 +86,57 @@ jobs:
           gradle-version: "9.7.1"
           cache-read-only: false
 
-      - name: Restore release keystore
+      - name: Decode single release signing bundle
         env:
-          GHI_RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          GHI_RELEASE_BUNDLE_B64: ${{ secrets.GHI_RELEASE_BUNDLE_B64 }}
         run: |
           set -euo pipefail
-
-          test -n "$GHI_RELEASE_KEYSTORE_B64"
-
+          test -n "$GHI_RELEASE_BUNDLE_B64" || { echo "::error::Missing GHI_RELEASE_BUNDLE_B64 repository secret"; exit 1; }
           mkdir -p "$RUNNER_TEMP/ghi-signing"
+          printf '%s' "$GHI_RELEASE_BUNDLE_B64" | base64 --decode > "$RUNNER_TEMP/ghi-signing/bundle.env"
+          chmod 600 "$RUNNER_TEMP/ghi-signing/bundle.env"
+          grep -q '^GHI_RELEASE_STORE_PASSWORD=' "$RUNNER_TEMP/ghi-signing/bundle.env"
+          grep -q '^GHI_RELEASE_KEY_ALIAS=' "$RUNNER_TEMP/ghi-signing/bundle.env"
+          grep -q '^GHI_RELEASE_KEY_PASSWORD=' "$RUNNER_TEMP/ghi-signing/bundle.env"
+          grep -q '^GHI_RELEASE_KEYSTORE_B64=' "$RUNNER_TEMP/ghi-signing/bundle.env"
 
-          printf '%s' "$GHI_RELEASE_KEYSTORE_B64" \
-            | base64 --decode \
-            > "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
-
-          test -s \
-            "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
-
-      - name: Create Android local.properties
-        env:
-          LOCAL_PROPERTIES_B64: ${{ secrets.LOCAL_PROPERTIES }}
+      - name: Restore and validate release keystore
         run: |
           set -euo pipefail
-
-          test -n "$LOCAL_PROPERTIES_B64"
-
-          printf '%s' "$LOCAL_PROPERTIES_B64"             | base64 --decode             > android/local.properties
-
-          test -s android/local.properties
-
-          echo "local.properties created successfully."
-
-      - name: Prepare release signing
-        env:
-          LOCAL_PROPERTIES_B64: ${{ secrets.LOCAL_PROPERTIES }}
-        run: |
-          set -euo pipefail
-
-          STORE_PASSWORD="$(printf '%s' "$LOCAL_PROPERTIES_B64" | base64 --decode | sed -n 's/^GHI_RELEASE_STORE_PASSWORD=//p')"
-          KEY_ALIAS="$(printf '%s' "$LOCAL_PROPERTIES_B64" | base64 --decode | sed -n 's/^GHI_RELEASE_KEY_ALIAS=//p')"
-          KEY_PASSWORD="$(printf '%s' "$LOCAL_PROPERTIES_B64" | base64 --decode | sed -n 's/^GHI_RELEASE_KEY_PASSWORD=//p')"
-
-          test -n "$STORE_PASSWORD"
-          test -n "$KEY_ALIAS"
-          test -n "$KEY_PASSWORD"
-
+          BUNDLE="$RUNNER_TEMP/ghi-signing/bundle.env"
+          STORE_PASSWORD="$(sed -n 's/^GHI_RELEASE_STORE_PASSWORD=//p' "$BUNDLE")"
+          KEY_ALIAS="$(sed -n 's/^GHI_RELEASE_KEY_ALIAS=//p' "$BUNDLE")"
+          KEY_PASSWORD="$(sed -n 's/^GHI_RELEASE_KEY_PASSWORD=//p' "$BUNDLE")"
+          KEYSTORE_B64="$(sed -n 's/^GHI_RELEASE_KEYSTORE_B64=//p' "$BUNDLE")"
+          test -n "$STORE_PASSWORD"; test -n "$KEY_ALIAS"; test -n "$KEY_PASSWORD"; test -n "$KEYSTORE_B64"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
+          test -s "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
+          keytool -list -keystore "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
           {
+            echo "GHI_RELEASE_STORE_FILE=$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
             echo "GHI_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
             echo "GHI_RELEASE_KEY_ALIAS=$KEY_ALIAS"
             echo "GHI_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
+          rm -f "$BUNDLE"
 
       - name: Unit tests
-        env:
-          GHI_RELEASE_STORE_FILE: ${{ runner.temp }}/ghi-signing/GlobalHostInteligence-release.keystore
-        run: |
-          cd android
-          gradle testDebugUnitTest \
-            --stacktrace \
-            --no-daemon
+        run: cd android && gradle testDebugUnitTest --stacktrace --no-daemon
 
-      - name: Build signed release APK
-        env:
-          GHI_RELEASE_STORE_FILE: ${{ runner.temp }}/ghi-signing/GlobalHostInteligence-release.keystore
-        run: |
-          cd android
-          gradle assembleRelease \
-            --stacktrace \
-            --no-daemon
+      - name: Assemble signed release APK
+        run: cd android && gradle assembleRelease --stacktrace --no-daemon
 
-      - name: Verify signed release APK
+      - name: Verify release APK
         run: |
           set -euo pipefail
-
-          APK="$(find \
-            android/app/build/outputs/apk/release \
-            -maxdepth 1 \
-            -type f \
-            -name '*.apk' \
-            | head -n 1)"
-
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
           test -s "$APK"
+          unzip -l "$APK" | grep -q 'lib/armeabi-v7a/libgojni.so'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
+          echo "Verified signed release APK: $APK"
 
-          echo "Release APK:"
-          ls -lh "$APK"
-
-          unzip -l "$APK" \
-            | grep -q 'lib/armeabi-v7a/libgojni.so'
-
-          unzip -l "$APK" \
-            | grep -q 'lib/arm64-v8a/libgojni.so'
-
-          echo "Verified native ABIs:"
-          echo "  armeabi-v7a"
-          echo "  arm64-v8a"
-
-      - name: Upload signed release APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: ghi-release-apk-v2.4.1

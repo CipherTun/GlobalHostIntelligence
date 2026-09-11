@@ -20,8 +20,6 @@ class HomeViewModel @Inject constructor() : ViewModel() {
     private val _dnsTestResult = MutableStateFlow<String?>(null)
     val dnsTestResult: StateFlow<String?> = _dnsTestResult.asStateFlow()
 
-    }
-
     fun runDnsTest(fqdn: String) {
         viewModelScope.launch {
             if (fqdn.isBlank()) { _dnsTestResult.value = "Enter a hostname"; return@launch }

@@ -15,7 +15,9 @@ import io.ciphertun.ghi.core.ui.components.*
 fun SettingsScreen(
     discoveryLimit: Int, validationThreads: Int, sourceParallelism: Int, validationTimeout: Int, userAgent: String,
     enabledSources: Set<String>, animationsEnabled: Boolean, compactResults: Boolean,
-    onSave: (Int, Int, Int, Int, String, Set<String>, Boolean, Boolean) -> Unit, onReset: () -> Unit
+    onSave: (Int, Int, Int, Int, String, Set<String>, Boolean, Boolean) -> Unit,
+    onReset: () -> Unit,
+    onPrivacyOptions: () -> Unit = {}
 ) {
     var limit by remember(discoveryLimit) { mutableStateOf(discoveryLimit.toString()) }
     var threads by remember(validationThreads) { mutableStateOf(validationThreads.toString()) }
@@ -47,6 +49,13 @@ fun SettingsScreen(
                 Button(onClick = { onSave(limit.toIntOrNull() ?: discoveryLimit, threads.toIntOrNull() ?: validationThreads, parallel.toIntOrNull() ?: sourceParallelism, timeout.toIntOrNull() ?: validationTimeout, agent, sources, animations, compact); saved = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Icon(Icons.Filled.Save, null); Spacer(Modifier.width(8.dp)); Text("SAVE SETTINGS") }
             }
             if (saved) item { Text("Settings saved and will be used by the next run.", color = GhiSignalGreen, style = MaterialTheme.typography.labelSmall) }
+            item {
+                OutlinedButton(onClick = onPrivacyOptions, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Filled.PrivacyTip, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("AD PRIVACY OPTIONS")
+                }
+            }
             item { OutlinedButton(onClick = { reset = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Filled.Restore, null); Spacer(Modifier.width(8.dp)); Text("RESET TO DEFAULTS") } }
         }
     }

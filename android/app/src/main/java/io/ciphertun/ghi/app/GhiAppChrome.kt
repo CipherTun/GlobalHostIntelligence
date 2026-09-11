@@ -1,6 +1,5 @@
 package io.ciphertun.ghi.app
 
-import android.app.Activity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -16,7 +17,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -24,11 +24,13 @@ import io.ciphertun.ghi.R
 import io.ciphertun.ghi.core.designsystem.*
 import io.ciphertun.ghi.core.ui.components.LocalGhiOpenDrawer
 import io.ciphertun.ghi.core.ui.navigation.GhiRoute
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
+// Keep the product surface focused: six primary tools. The deeper TLS/DNS/
+// certificate/export routes remain available to the implementation for inline
+// details and future deep links, but are not promoted to the main launcher UI.
 private val toolLevel = listOf(
     NavItem(GhiRoute.DISCOVER, "Discovery", Icons.Filled.Explore),
     NavItem(GhiRoute.SUBDOMAINS, "Subdomains", Icons.Filled.Dns),
@@ -46,51 +48,26 @@ private val bottomLevel = listOf(
 ).mapNotNull { route -> toolLevel.firstOrNull { it.route == route } }
 
 @Composable
-private fun GhiAutomaticAdHost(route: String?) {
-    val context = LocalContext.current
-    val activity = context as? Activity
-    var showPrompt by remember { mutableStateOf(false) }
-    val currentRoute by rememberUpdatedState(route)
-
-    LaunchedEffect(Unit) {
-        GhiAdManager.preload(context)
-        while (true) {
-            delay(1_000L)
-            if (currentRoute != GhiRoute.SETTINGS && activity != null && !showPrompt && GhiAdManager.shouldOffer()) {
-                showPrompt = true
-            }
-        }
-    }
-
-    if (showPrompt && activity != null) {
-        AlertDialog(
-            onDismissRequest = { showPrompt = false },
-            title = { Text("Sponsored message") },
-            text = {
-                Text(
-                    "Watch a short sponsored video to receive 60 seconds without another automatic ad. " +
-                        "You can choose Not now."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showPrompt = false
-                    GhiAdManager.show(activity)
-                }) { Text("Watch") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPrompt = false }) { Text("Not now") }
-            }
-        )
-    }
-}
-
-@Composable
 fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val current by navController.currentBackStackEntryAsState()
     val route = current?.destination?.route
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val offerVisible by GhiAdManager.offerVisible.collectAsState()
+    val adsReady by GhiAdManager.ready.collectAsState()
+
+    // Full-screen offers are never shown on Settings and never more often than
+    // once per minute. The short delay makes the ad a natural transition break
+    // instead of an app-start interruption.
+    LaunchedEffect(route) {
+        GhiAdManager.dismissOffer()
+        if (route != GhiRoute.SETTINGS) {
+            kotlinx.coroutines.delay(60_000L)
+            GhiAdManager.requestOffer()
+        }
+    }
 
     fun go(target: String) {
         scope.launch { drawer.close() }
@@ -100,8 +77,6 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
             popUpTo(GhiRoute.DISCOVER) { saveState = true }
         }
     }
-
-    GhiAutomaticAdHost(route)
 
     ModalNavigationDrawer(
         drawerState = drawer,
@@ -151,18 +126,18 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                 containerColor = GhiInk950,
                 bottomBar = {
                     Column {
-                        if (route != GhiRoute.SETTINGS) {
+                        if (route != GhiRoute.SETTINGS && adsReady) {
                             GhiAdBanner()
                         }
                         NavigationBar(containerColor = GhiInk900, tonalElevation = 0.dp) {
-                            bottomLevel.forEach { item ->
-                                NavigationBarItem(
-                                    selected = route == item.route,
-                                    onClick = { go(item.route) },
-                                    icon = { Icon(item.icon, item.label) },
-                                    label = { Text(item.label, maxLines = 1) }
-                                )
-                            }
+                        bottomLevel.forEach { item ->
+                            NavigationBarItem(
+                                selected = route == item.route,
+                                onClick = { go(item.route) },
+                                icon = { Icon(item.icon, item.label) },
+                                label = { Text(item.label, maxLines = 1) }
+                            )
+                        }
                         }
                     }
                 }
@@ -176,5 +151,25 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                 }
             }
         }
+    }
+
+    if (offerVisible && activity != null && route != GhiRoute.SETTINGS) {
+        AlertDialog(
+            onDismissRequest = { GhiAdManager.dismissOffer() },
+            title = { Text("Sponsored break") },
+            text = {
+                Text("Watch a short sponsored video to receive 60 seconds without another automatic ad.")
+            },
+            confirmButton = {
+                TextButton(onClick = { GhiAdManager.show(activity) }) {
+                    Text("CONTINUE")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { GhiAdManager.dismissOffer() }) {
+                    Text("NOT NOW")
+                }
+            }
+        )
     }
 }
