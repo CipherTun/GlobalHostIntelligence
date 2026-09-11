@@ -38,13 +38,13 @@ class MainActivity : ComponentActivity() {
                 params,
                 {
                     UserMessagingPlatform.loadAndShowConsentFormIfRequired(this) {
-                        GhiAdManager.initialize(this, consentInformation.canRequestAds)
+                        GhiAdManager.initialize(this, consentInformation.canRequestAds())
                     }
                 },
                 {
                     // If the network is unavailable, UMP may still have a usable
                     // previous-session decision. Never block application startup.
-                    GhiAdManager.initialize(this, consentInformation.canRequestAds)
+                    GhiAdManager.initialize(this, consentInformation.canRequestAds())
                 }
             )
         }.onFailure {

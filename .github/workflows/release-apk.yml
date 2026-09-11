@@ -116,6 +116,10 @@ jobs:
           test -n "$STORE_PASSWORD"
           test -n "$KEY_ALIAS"
           test -n "$KEY_PASSWORD"
+          echo "::add-mask::$STORE_PASSWORD"
+          echo "::add-mask::$KEY_ALIAS"
+          echo "::add-mask::$KEY_PASSWORD"
+
           {
             echo "GHI_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
             echo "GHI_RELEASE_KEY_ALIAS=$KEY_ALIAS"
