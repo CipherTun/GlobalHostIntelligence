@@ -86,39 +86,42 @@ jobs:
           gradle-version: "9.7.1"
           cache-read-only: false
 
-      - name: Decode single release signing bundle
+      - name: Restore release keystore
         env:
-          GHI_RELEASE_BUNDLE_B64: ${{ secrets.GHI_RELEASE_BUNDLE_B64 }}
+          GHI_RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
-          test -n "$GHI_RELEASE_BUNDLE_B64" || { echo "::error::Missing GHI_RELEASE_BUNDLE_B64 repository secret"; exit 1; }
+          test -n "$GHI_RELEASE_KEYSTORE_B64"
           mkdir -p "$RUNNER_TEMP/ghi-signing"
-          printf '%s' "$GHI_RELEASE_BUNDLE_B64" | base64 --decode > "$RUNNER_TEMP/ghi-signing/bundle.env"
-          chmod 600 "$RUNNER_TEMP/ghi-signing/bundle.env"
-          grep -q '^GHI_RELEASE_STORE_PASSWORD=' "$RUNNER_TEMP/ghi-signing/bundle.env"
-          grep -q '^GHI_RELEASE_KEY_ALIAS=' "$RUNNER_TEMP/ghi-signing/bundle.env"
-          grep -q '^GHI_RELEASE_KEY_PASSWORD=' "$RUNNER_TEMP/ghi-signing/bundle.env"
-          grep -q '^GHI_RELEASE_KEYSTORE_B64=' "$RUNNER_TEMP/ghi-signing/bundle.env"
+          printf "%s" "$GHI_RELEASE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
+          test -s "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
 
-      - name: Restore and validate release keystore
+      - name: Create Android local.properties
+        env:
+          LOCAL_PROPERTIES_B64: ${{ secrets.LOCAL_PROPERTIES }}
         run: |
           set -euo pipefail
-          BUNDLE="$RUNNER_TEMP/ghi-signing/bundle.env"
-          STORE_PASSWORD="$(sed -n 's/^GHI_RELEASE_STORE_PASSWORD=//p' "$BUNDLE")"
-          KEY_ALIAS="$(sed -n 's/^GHI_RELEASE_KEY_ALIAS=//p' "$BUNDLE")"
-          KEY_PASSWORD="$(sed -n 's/^GHI_RELEASE_KEY_PASSWORD=//p' "$BUNDLE")"
-          KEYSTORE_B64="$(sed -n 's/^GHI_RELEASE_KEYSTORE_B64=//p' "$BUNDLE")"
-          test -n "$STORE_PASSWORD"; test -n "$KEY_ALIAS"; test -n "$KEY_PASSWORD"; test -n "$KEYSTORE_B64"
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
-          test -s "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
-          keytool -list -keystore "$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          test -n "$LOCAL_PROPERTIES_B64"
+          printf "%s" "$LOCAL_PROPERTIES_B64" | base64 --decode > android/local.properties
+          test -s android/local.properties
+
+      - name: Prepare release signing
+        env:
+          LOCAL_PROPERTIES_B64: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          set -euo pipefail
+          STORE_PASSWORD="$(printf "%s" "$LOCAL_PROPERTIES_B64" | base64 --decode | sed -n "s/^GHI_RELEASE_STORE_PASSWORD=//p")"
+          KEY_ALIAS="$(printf "%s" "$LOCAL_PROPERTIES_B64" | base64 --decode | sed -n "s/^GHI_RELEASE_KEY_ALIAS=//p")"
+          KEY_PASSWORD="$(printf "%s" "$LOCAL_PROPERTIES_B64" | base64 --decode | sed -n "s/^GHI_RELEASE_KEY_PASSWORD=//p")"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
           {
-            echo "GHI_RELEASE_STORE_FILE=$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
             echo "GHI_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
             echo "GHI_RELEASE_KEY_ALIAS=$KEY_ALIAS"
             echo "GHI_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
-          rm -f "$BUNDLE"
+
 
       - name: Unit tests
         run: cd android && gradle testDebugUnitTest --stacktrace --no-daemon
