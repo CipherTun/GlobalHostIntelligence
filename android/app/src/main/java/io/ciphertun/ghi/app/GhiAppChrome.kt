@@ -68,8 +68,7 @@ private fun GhiAutomaticAdHost(route: String?) {
             title = { Text("Sponsored message") },
             text = {
                 Text(
-                    "Watch a short sponsored video to support Global Host Intelligence. " +
-                        "After completion, you receive 60 seconds without another automatic ad. " +
+                    "Watch a short sponsored video to receive 60 seconds without another automatic ad. " +
                         "You can choose Not now."
                 )
             },
@@ -152,7 +151,9 @@ fun GhiAppChrome(navController: NavHostController = rememberNavController()) {
                 containerColor = GhiInk950,
                 bottomBar = {
                     Column {
-                        GhiAdBanner()
+                        if (route != GhiRoute.SETTINGS) {
+                            GhiAdBanner()
+                        }
                         NavigationBar(containerColor = GhiInk900, tonalElevation = 0.dp) {
                             bottomLevel.forEach { item ->
                                 NavigationBarItem(

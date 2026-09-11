@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -23,12 +25,55 @@ private fun isDebugBuild(context: Context): Boolean =
     (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
 @Composable
-fun GhiAdBanner(modifier: Modifier = Modifier) {
+fun GhiAdBanner(
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
+
     val adUnitId = if (isDebugBuild(context)) {
         GOOGLE_TEST_BANNER_AD_UNIT_ID
     } else {
         PRODUCTION_BANNER_AD_UNIT_ID
+    }
+
+    val adView = remember(context, adUnitId) {
+        AdView(context).apply {
+            setAdSize(AdSize.BANNER)
+            this.adUnitId = adUnitId
+        }
+    }
+
+    DisposableEffect(adView) {
+        var active = true
+
+        GhiAdManager.whenReady(context) {
+            if (active) {
+                try {
+                    adView.loadAd(
+                        AdRequest.Builder().build()
+                    )
+                } catch (t: Throwable) {
+                    android.util.Log.e(
+                        "GhiAdBanner",
+                        "Banner load failed; continuing without banner",
+                        t
+                    )
+                }
+            }
+        }
+
+        onDispose {
+            active = false
+            try {
+                adView.destroy()
+            } catch (t: Throwable) {
+                android.util.Log.w(
+                    "GhiAdBanner",
+                    "Banner cleanup failed",
+                    t
+                )
+            }
+        }
     }
 
     Box(
@@ -40,18 +85,8 @@ fun GhiAdBanner(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight(),
-            factory = { ctx ->
-                AdView(ctx).apply {
-                    setAdSize(AdSize.BANNER)
-                    this.adUnitId = adUnitId
-                    loadAd(AdRequest.Builder().build())
-                }
-            },
-            update = { view ->
-                if (view.adUnitId != adUnitId) {
-                    view.adUnitId = adUnitId
-                    view.loadAd(AdRequest.Builder().build())
-                }
+            factory = {
+                adView
             }
         )
     }
