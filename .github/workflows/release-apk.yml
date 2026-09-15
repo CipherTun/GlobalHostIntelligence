@@ -1,9 +1,10 @@
 name: GHI Release APK - Ads No R8 No Cache
 
 on:
-  push:
-    branches: [no-ads-release]
-  workflow_dispatch: {}
+  workflow_run:
+    workflows: ["Mobile Core Library (AAR)"]
+    types: [completed]
+
 
 permissions:
   actions: read
@@ -15,6 +16,7 @@ concurrency:
 
 jobs:
   release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
