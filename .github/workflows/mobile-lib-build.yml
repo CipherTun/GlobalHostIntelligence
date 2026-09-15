@@ -27,9 +27,6 @@ jobs:
       - name: Disable Go build caches
         run: |
           set -euo pipefail
-          export GOCACHE=off
-          go env GOCACHE
-          go clean -cache -modcache || true
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -53,7 +50,6 @@ jobs:
         run: |
           set -euo pipefail
           cd backend
-          go clean -cache -modcache || true
           go test ./mobile -count=1
 
       - name: Install gomobile without cache
