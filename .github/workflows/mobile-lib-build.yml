@@ -46,7 +46,6 @@ jobs:
 
       - name: Compile and unit-test mobile discovery core
         env:
-          GOCACHE: off
         run: |
           set -euo pipefail
           cd backend
@@ -54,7 +53,6 @@ jobs:
 
       - name: Install gomobile without cache
         env:
-          GOCACHE: off
         run: |
           set -euo pipefail
           cd backend
@@ -69,7 +67,6 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/29.0.14206865
           ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/29.0.14206865
-          GOCACHE: off
         run: |
           set -euo pipefail
           cd backend
