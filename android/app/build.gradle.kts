@@ -23,26 +23,35 @@ android {
             val storePasswordValue = System.getenv("GHI_RELEASE_STORE_PASSWORD")
             val keyAliasValue = System.getenv("GHI_RELEASE_KEY_ALIAS")
             val keyPasswordValue = System.getenv("GHI_RELEASE_KEY_PASSWORD")
-            if (!storeFilePath.isNullOrBlank()) storeFile = file(storeFilePath)
-            if (!storePasswordValue.isNullOrBlank()) storePassword = storePasswordValue
-            if (!keyAliasValue.isNullOrBlank()) keyAlias = keyAliasValue
-            if (!keyPasswordValue.isNullOrBlank()) keyPassword = keyPasswordValue
+
+            if (!storeFilePath.isNullOrBlank()) {
+                storeFile = file(storeFilePath)
+            }
+            if (!storePasswordValue.isNullOrBlank()) {
+                storePassword = storePasswordValue
+            }
+            if (!keyAliasValue.isNullOrBlank()) {
+                keyAlias = keyAliasValue
+            }
+            if (!keyPasswordValue.isNullOrBlank()) {
+                keyPassword = keyPasswordValue
+            }
         }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = false
 
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            isMinifyEnabled = false
+            isShrinkResources = false
+            isDebuggable = false
         }
 
         debug {
             isMinifyEnabled = false
+            isShrinkResources = false
+            isDebuggable = true
             applicationIdSuffix = ".debug"
         }
     }
@@ -64,7 +73,6 @@ android {
 }
 
 dependencies {
-    // Core modules
     implementation(project(":core:common"))
     implementation(project(":core:model"))
     implementation(project(":core:network"))
@@ -72,23 +80,18 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:crawlercore"))
 
-    // Features
     implementation(project(":feature:discover"))
     implementation(project(":feature:settings"))
 
-    // Android
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.navigation.compose)
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-splashscreen:1.2.0")
 
-    // Google Mobile Ads + User Messaging Platform. Release builds use the
-    // production units; debug builds select Google's official test units.
     implementation("com.google.android.gms:play-services-ads:25.4.0")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
 
-    // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
@@ -98,11 +101,9 @@ dependencies {
 
     debugImplementation(libs.compose.ui.tooling)
 
-    // Hilt runtime/compiler. The Hilt Gradle plugin is applied above.
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
-    // Tests
     testImplementation(libs.junit)
 
     androidTestImplementation(platform(libs.compose.bom))

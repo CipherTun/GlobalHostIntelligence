@@ -13,15 +13,23 @@ permissions:
 jobs:
   build-aar:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Go 1.27
+      - name: Setup Go 1.27 without cache
         uses: actions/setup-go@v6
         with:
           go-version: "1.27.1"
-          cache-dependency-path: backend/go.sum
+          cache: false
+
+      - name: Disable Go build caches
+        run: |
+          set -euo pipefail
+          export GOCACHE=off
+          go env GOCACHE
+          go clean -cache -modcache || true
 
       - name: Setup Java 17
         uses: actions/setup-java@v5
@@ -32,58 +40,118 @@ jobs:
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Install Android NDK r29
-        run: sdkmanager --install "ndk;29.0.14206865"
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;29.0.14206865"
 
       - name: Compile and unit-test mobile discovery core
+        env:
+          GOCACHE: off
         run: |
+          set -euo pipefail
           cd backend
+          go clean -cache -modcache || true
           go test ./mobile -count=1
 
-      - name: Add latest golang.org/x/mobile toolchain to module
+      - name: Install gomobile without cache
+        env:
+          GOCACHE: off
         run: |
+          set -euo pipefail
           cd backend
+          go clean -cache || true
           go get golang.org/x/mobile@latest
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile clean || true
           gomobile init
 
-      - name: Build ARM32 + ARM64 AAR
+      - name: Build fresh ARM32 + ARM64 AAR
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/29.0.14206865
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/29.0.14206865
+          GOCACHE: off
         run: |
+          set -euo pipefail
           cd backend
-          rm -f ghicore.aar
-          gomobile bind \\
-            -target=android/arm,android/arm64 \\
-            -androidapi 26 \\
-            -javapkg=io.ciphertun.ghi.core.crawlercore.generated \\
-            -o ghicore.aar \\
+
+          rm -rf ghicore.aar
+          go clean -cache || true
+          gomobile clean || true
+          gomobile init
+
+          gomobile bind \
+            -target=android/arm,android/arm64 \
+            -androidapi 35 \
+            -javapkg=io.ciphertun.ghi.core.crawlercore.generated \
+            -o ghicore.aar \
             ./mobile
+
+          test -s ghicore.aar
 
       - name: Verify AAR contents
         run: |
           set -euo pipefail
           cd backend
+
           test -f ghicore.aar
           unzip -l ghicore.aar | grep -q "jni/armeabi-v7a/libgojni.so"
           unzip -l ghicore.aar | grep -q "jni/arm64-v8a/libgojni.so"
-          mkdir -p "$RUNNER_TEMP/ghi-aar-check"
-          unzip -p ghicore.aar classes.jar > "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar"
-          jar tf "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" | grep -qx "io/ciphertun/ghi/core/crawlercore/generated/mobile/Mobile.class"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "ping()"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "resolveDomain(java.lang.String)"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "discover(java.lang.String"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "analyzeHost(java.lang.String)"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "generateRequest(java.lang.String"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "checkHost(java.lang.String"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "checkResponse(java.lang.String"
-          javap -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile | grep -q "resolveIP(java.lang.String"
-          echo "Verified: ARM32 + ARM64 + Mobile API"
 
-      - name: Upload AAR artifact
+          mkdir -p "$GITHUB_WORKSPACE/.ci-aar-check"
+          unzip -p ghicore.aar classes.jar \
+            > "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar"
+
+          jar tf "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            | grep -qx \
+            "io/ciphertun/ghi/core/crawlercore/generated/mobile/Mobile.class"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "ping()"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "resolveDomain(java.lang.String)"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "discover(java.lang.String"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "analyzeHost(java.lang.String)"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "generateRequest(java.lang.String"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "checkHost(java.lang.String"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "checkResponse(java.lang.String"
+
+          javap \
+            -classpath "$GITHUB_WORKSPACE/.ci-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "resolveIP(java.lang.String"
+
+          echo "Verified: fresh ARM32 + ARM64 + Mobile API"
+
+      - name: Upload fresh AAR
         uses: actions/upload-artifact@v4
         with:
           name: ghi-core-aar
