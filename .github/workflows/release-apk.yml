@@ -88,7 +88,7 @@ jobs:
 
       - name: Restore release keystore
         env:
-          GHI_RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          GHI_RELEASE_KEYSTORE_B64: ${{ secrets.GHI_RELEASE_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
           test -n "$GHI_RELEASE_KEYSTORE_B64"
