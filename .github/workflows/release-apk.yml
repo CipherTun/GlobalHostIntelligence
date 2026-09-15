@@ -1,44 +1,43 @@
-name: GHI Release APK
+name: GHI No-Ads Release APK
 
 on:
+  push:
+    branches: [no-ads-release]
   workflow_dispatch: {}
-  workflow_run:
-    workflows: ["Mobile Core Library (AAR)"]
-    types: [completed]
-    branches: [main]
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: ghi-release-apk
+  group: ghi-no-ads-release
   cancel-in-progress: false
 
 jobs:
   release:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
-
     steps:
-      - name: Resolve matching AAR run
+      - name: Wait for matching AAR build
         id: aar
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            RUN_ID="${{ github.event.workflow_run.id }}"
-            SOURCE_SHA="${{ github.event.workflow_run.head_sha }}"
-          else
-            SOURCE_SHA="${{ github.sha }}"
-            RUN_ID="$(gh run list --workflow mobile-lib-build.yml --branch main --status success --limit 100 --json databaseId,headSha --jq ".[] | select(.headSha == \"$SOURCE_SHA\") | .databaseId" | head -n 1)"
-            test -n "$RUN_ID" || { echo "::error::No successful AAR build exists for $SOURCE_SHA"; exit 1; }
-          fi
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          SOURCE_SHA="${{ github.sha }}"
+          echo "Waiting for successful AAR build for $SOURCE_SHA"
+          for i in $(seq 1 90); do
+            RUN_ID="$(gh run list --workflow mobile-lib-build.yml --branch no-ads-release --status success --limit 100 --json databaseId,headSha --jq ".[] | select(.headSha == \\"$SOURCE_SHA\\") | .databaseId" | head -n 1)"
+            if [ -n "$RUN_ID" ]; then
+              echo "Found matching AAR run: $RUN_ID"
+              echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+              echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "AAR not ready: attempt $i/90"
+            sleep 10
+          done
+          echo "::error::No successful AAR build found for $SOURCE_SHA"
+          exit 1
 
       - name: Checkout exact AAR source
         uses: actions/checkout@v5
@@ -119,14 +118,12 @@ jobs:
           echo "::add-mask::$STORE_PASSWORD"
           echo "::add-mask::$KEY_ALIAS"
           echo "::add-mask::$KEY_PASSWORD"
-
           {
             echo "GHI_RELEASE_STORE_FILE=$RUNNER_TEMP/ghi-signing/GlobalHostInteligence-release.keystore"
             echo "GHI_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
             echo "GHI_RELEASE_KEY_ALIAS=$KEY_ALIAS"
             echo "GHI_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
-
 
       - name: Unit tests
         run: cd android && gradle testDebugUnitTest --stacktrace --no-daemon
@@ -137,17 +134,17 @@ jobs:
       - name: Verify release APK
         run: |
           set -euo pipefail
-          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" | head -n 1)"
           test -n "$APK"
           test -s "$APK"
-          unzip -l "$APK" | grep -q 'lib/armeabi-v7a/libgojni.so'
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
+          unzip -l "$APK" | grep -q "lib/armeabi-v7a/libgojni.so"
+          unzip -l "$APK" | grep -q "lib/arm64-v8a/libgojni.so"
           echo "Verified signed release APK: $APK"
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: ghi-release-apk-v2.4.1
+          name: ghi-no-ads-release-apk
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
