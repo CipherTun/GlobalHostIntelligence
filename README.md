@@ -1,6 +1,6 @@
 # Global Host Intelligence
 
-Global Host Intelligence (GHI) is an Android network-intelligence toolkit with an embedded Go engine. The APK works without a separate server or Termux installation.
+Global Host Intelligence (GHI) 4.1 is an Android network-intelligence toolkit with an embedded Go engine. The APK works without a separate server or Termux installation.
 
 ## Features
 
@@ -8,10 +8,14 @@ Global Host Intelligence (GHI) is an Android network-intelligence toolkit with a
 - **Subdomains** — discover and validate subdomains for a target domain.
 - **Response Checker** — HTTP/HTTPS request testing with methods, headers, body, redirects, TLS handling, timeout control, DNS/resolver options, and response details.
 - **IP / Domain tools** — resolve domains to IP addresses and IP addresses back to observed domains.
-- **Payload Generator** — generate network request/payload formats for supported methods and targets.
+- **Payload Generator** — construct and validate protocol-valid HTTP/1.1 requests, with current Chrome Android UA, custom headers/body, raw/absolute/keep-alive/WebSocket handshake variants, cURL export, and Fetch export.
 - **TLS Analyzer** — inspect TLS version, cipher, ALPN, certificates, fingerprints, and peer-chain information.
 - **DNS Inspector** — inspect common DNS record types and reverse lookups where available.
 - **Certificate Search** — search public Certificate Transparency data.
+- **Investigation** — run host, DNS, TLS, security-header, redirect, timing, technology, web-surface, and certificate analysis together.
+- **GHI Agent** — route plain-language requests to real local engines or public web search; it does not pretend to be a remote LLM.
+- **Web Surface Inspector** — inspect the landing page plus robots.txt, sitemap.xml, security.txt, Android/iOS association files, and manifest metadata without recursive crawling.
+- **Thinking state** — a local Gemini-inspired spectrum spark appears on long-running operations, preceded by a thin contextual message; it reports UI work rather than fabricated backend progress.
 - **Export** — export discovered live hosts as text, CSV, or JSON.
 - **Configurable engine** — discovery limits, validation workers, source parallelism, timeout, user-agent, sources, animations, and compact results.
 - **Production AdMob** — consent-aware banner advertising and rate-limited rewarded-interstitial breaks. Debug builds use Google's test ad units; release builds use the configured production units.
@@ -25,7 +29,7 @@ Global Host Intelligence (GHI) is an Android network-intelligence toolkit with a
 3. Enter a country code, ASN, or domain scope supported by the discovery screen and start a scan.
 4. Watch the live validated results appear while discovery sources run in parallel.
 5. Tap a hostname to expand its details. Tap it again to collapse it.
-6. Use **Subdomains**, **Response Checker**, **IP / Domain**, **Payload Generator**, **TLS**, **DNS**, and **Certificates** from the menu when you need a specific investigation tool.
+6. Use **Subdomains**, **Response Checker**, **IP / Domain**, **Payload Generator**, **TLS**, **DNS**, **Certificates**, **Investigation**, **GHI Agent**, and **Web Surface** from the menu when you need a specific investigation tool.
 7. Use **Export** when you want the current live-host result set as text, CSV, or JSON.
 8. Open **Settings** to tune the discovery engine and interface. Ad banners and automatic ad breaks are not shown on Settings.
 

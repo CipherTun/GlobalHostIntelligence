@@ -30,13 +30,14 @@ func Investigate(target string, timeoutSeconds int) string {
 		name string
 		fn   func() string
 	}{
-		{"host", func() string { return AnalyzeHostWithOptions(target, timeoutSeconds, "GlobalHostIntelligence/4.0") }},
+		{"host", func() string { return AnalyzeHostWithOptions(target, timeoutSeconds, CurrentBrowserUserAgent) }},
 		{"dns", func() string { return InspectDNS(target) }},
 		{"tls", func() string { return AnalyzeTLS(target) }},
 		{"headers", func() string { return SecurityHeaders(target, timeoutSeconds) }},
 		{"redirects", func() string { return RedirectMap(target, timeoutSeconds) }},
 		{"timing", func() string { return NetworkTiming(target, timeoutSeconds) }},
 		{"technology", func() string { return TechnologyFingerprint(target, timeoutSeconds) }},
+		{"web_surface", func() string { return InspectWebSurface(target, timeoutSeconds) }},
 		{"certificates", func() string { return SearchCertificates(target) }},
 	}
 
@@ -80,7 +81,7 @@ func SecurityHeaders(target string, timeoutSeconds int) string {
 	if err != nil {
 		return mustJSON(map[string]any{"ok": false, "host": host, "error": err.Error()})
 	}
-	req.Header.Set("User-Agent", "GlobalHostIntelligence/4.0")
+	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 	req.Header.Set("Range", "bytes=0-0")
 
 	start := time.Now()
@@ -158,7 +159,7 @@ func RedirectMap(target string, timeoutSeconds int) string {
 		if err != nil {
 			break
 		}
-		req.Header.Set("User-Agent", "GlobalHostIntelligence/4.0")
+		req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 		req.Header.Set("Range", "bytes=0-0")
 		resp, err := client.Do(req)
 		if err != nil {
@@ -216,7 +217,7 @@ func NetworkTiming(target string, timeoutSeconds int) string {
 		result["total_ms"] = time.Since(total).Milliseconds()
 		return mustJSON(result)
 	}
-	req.Header.Set("User-Agent", "GlobalHostIntelligence/4.0")
+	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 	req.Header.Set("Range", "bytes=0-0")
 
 	trace := &httptrace.ClientTrace{
@@ -293,7 +294,7 @@ func TechnologyFingerprint(target string, timeoutSeconds int) string {
 	if err != nil {
 		return mustJSON(map[string]any{"ok": false, "error": err.Error()})
 	}
-	req.Header.Set("User-Agent", "GlobalHostIntelligence/4.0")
+	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 	req.Header.Set("Range", "bytes=0-65535")
 	start := time.Now()
 	resp, err := client.Do(req)
@@ -377,7 +378,7 @@ func InternetSearch(query string, maxResults int) string {
 	if err != nil {
 		return mustJSON(map[string]any{"ok": false, "error": err.Error()})
 	}
-	req.Header.Set("User-Agent", "GlobalHostIntelligence/4.0")
+	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 	if err != nil {
 		return mustJSON(map[string]any{"ok": false, "query": query, "error": err.Error()})
@@ -436,6 +437,9 @@ func GhiAgent(query string) string {
 	}
 	if target := agentTarget(lower, q, "technology", "technologies", "fingerprint"); target != "" {
 		return mustJSON(map[string]any{"ok": true, "agent": "technology", "target": target, "result": mustJSONObject(TechnologyFingerprint(target, 10))})
+	}
+	if target := agentTarget(lower, q, "surface", "web surface", "robots", "sitemap", "manifest"); target != "" {
+		return mustJSON(map[string]any{"ok": true, "agent": "web-surface", "target": target, "result": mustJSONObject(InspectWebSurface(target, 10))})
 	}
 	if target := agentTarget(lower, q, "subdomains", "subdomain", "discover"); target != "" {
 		return mustJSON(map[string]any{"ok": true, "agent": "discovery", "target": target, "result": mustJSONObject(DiscoverSubdomains(target, 500))})

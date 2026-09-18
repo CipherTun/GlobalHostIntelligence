@@ -42,6 +42,7 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
         composable(GhiRoute.PAYLOADS) { PayloadGeneratorScreen() }
         composable(GhiRoute.EXPORT) { ExportScreen(liveResults, session::exportResults) }
         composable(GhiRoute.INVESTIGATION) { GhiInvestigationScreen(session::investigate) }
+        composable(GhiRoute.WEB_SURFACE) { GhiWebSurfaceScreen(session::inspectWebSurface) }
         composable(GhiRoute.AGENT) { GhiAgentScreen(session::ghiAgent) }
         composable(GhiRoute.SOURCES) { DiscoverySourcesScreen(session.enabledSources(), session::saveSources) }
         composable(GhiRoute.SETTINGS) {

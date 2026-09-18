@@ -11,6 +11,7 @@ object GhiRoute {
     const val PAYLOADS = "payloads"
     const val EXPORT = "export"
     const val INVESTIGATION = "investigation"
+    const val WEB_SURFACE = "web-surface"
     const val AGENT = "agent"
     const val SOURCES = "sources"
     const val SETTINGS = "settings"

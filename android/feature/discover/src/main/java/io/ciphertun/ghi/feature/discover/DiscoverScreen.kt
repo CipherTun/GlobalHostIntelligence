@@ -87,6 +87,7 @@ fun DiscoverScreen(
             item {
                 if (running) Button(onClick = onStop, modifier = Modifier.fillMaxWidth().height(52.dp)) { Icon(Icons.Filled.Stop, null); Spacer(Modifier.width(8.dp)); Text("STOP DISCOVERY") }
                 else Button(onClick = { if (scopeMode == "Country") selected?.let { onStart(it.code.lowercase(), "country") } else onStart(domainSeed.trim(), "domain") }, enabled = if (scopeMode == "Country") selected != null else domainSeed.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp)) { Icon(Icons.Filled.Search, null); Spacer(Modifier.width(8.dp)); Text("START DISCOVERY") }
+                GhiBusyIndicator(running, "discovery")
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {

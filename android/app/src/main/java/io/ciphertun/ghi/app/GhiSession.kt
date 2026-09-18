@@ -30,7 +30,7 @@ class GhiSession(context: Context) {
     fun startDiscovery(query: String, scopeMode: String = "country", maxResults: Int = discoveryLimit()): String {
         val normalized = query.trim().lowercase()
         if (normalized.isBlank()) return ""
-        val limit = maxResults.coerceIn(10, 500)
+        val limit = maxResults.coerceIn(10, 5000)
         discoveryJob?.cancel()
         _status.value = "RUNNING"
         _error.value = null
@@ -198,11 +198,16 @@ class GhiSession(context: Context) {
         }
     }
 
-    fun discoveryLimit() = prefs.getInt("discovery_limit", 500).coerceIn(10, 500)
-    fun validationThreads() = prefs.getInt("validation_threads", 32).coerceIn(1, 128)
-    fun sourceParallelism() = prefs.getInt("source_parallelism", 8).coerceIn(1, 24)
-    fun validationTimeout() = prefs.getInt("validation_timeout", 8).coerceIn(2, 30)
-    fun userAgent() = prefs.getString("user_agent", "GlobalHostIntelligence/4.0") ?: "GlobalHostIntelligence/4.0"
+    fun discoveryLimit() = prefs.getInt("discovery_limit", 500).coerceIn(10, 5000)
+    fun validationThreads() = prefs.getInt("validation_threads", 32).coerceIn(1, 256)
+    fun sourceParallelism() = prefs.getInt("source_parallelism", 8).coerceIn(1, 32)
+    fun validationTimeout() = prefs.getInt("validation_timeout", 8).coerceIn(2, 60)
+    fun userAgent(): String {
+        val saved = prefs.getString("user_agent", "")?.trim().orEmpty()
+        return if (saved.isBlank() || saved.startsWith("GlobalHostIntelligence/")) {
+            DEFAULT_BROWSER_USER_AGENT
+        } else saved
+    }
     fun projectDiscoveryApiKey() = prefs.getString("project_discovery_api_key", "") ?: ""
     fun animationsEnabled() = prefs.getBoolean("animations", true)
     fun compactResults() = prefs.getBoolean("compact_results", false)
@@ -218,7 +223,9 @@ class GhiSession(context: Context) {
     fun saveSettings(limit: Int, threads: Int, parallel: Int, timeout: Int, agent: String, sources: Set<String>, animations: Boolean, compact: Boolean, projectDiscoveryKey: String = "") {
         prefs.edit().putInt("discovery_limit", limit.coerceIn(10, 5000)).putInt("validation_threads", threads.coerceIn(1, 256))
             .putInt("source_parallelism", parallel.coerceIn(1, 32)).putInt("validation_timeout", timeout.coerceIn(2, 60))
-            .putString("user_agent", agent.trim().ifBlank { "GlobalHostIntelligence/4.0" }).putStringSet("enabled_sources", sources)
+            .putString("user_agent", agent.trim().let {
+                if (it.isBlank() || it.startsWith("GlobalHostIntelligence/")) DEFAULT_BROWSER_USER_AGENT else it
+            }).putStringSet("enabled_sources", sources)
             .putString("project_discovery_api_key", projectDiscoveryKey.trim())
             .putBoolean("animations", animations).putBoolean("compact_results", compact).apply()
     }
@@ -226,6 +233,7 @@ class GhiSession(context: Context) {
     fun resetSettings() = prefs.edit().clear().apply()
 
     companion object {
+        const val DEFAULT_BROWSER_USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36"
         val DEFAULT_SOURCES = linkedSetOf("urlscan","crt.sh","crt.name","ctlogs.dev","certspotter","rapiddns","anubis","subdomain.center","hackertarget","wayback","threatminer","commoncrawl","otx","subdomain.app","sonar","riddler","jldc","sublist3r","country","urlscan-country")
     }
 }

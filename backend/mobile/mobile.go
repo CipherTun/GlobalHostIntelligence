@@ -75,7 +75,7 @@ func DiscoverSource(query, source string, maxResults int) string {
 	if maxResults < 1 {
 		maxResults = 100
 	}
-	if maxResults > 2000 {
+	if maxResults > 5000 {
 		maxResults = 2000
 	}
 	client := newHTTPClient()
@@ -229,7 +229,7 @@ func validateHost(c *http.Client, host string) (domainResult, bool) {
 		if err != nil {
 			continue
 		}
-		req.Header.Set("User-Agent", "GlobalHostIntelligence/2.3")
+		req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 		req.Header.Set("Range", "bytes=0-0")
 		resp, err := c.Do(req)
 		if err != nil {
@@ -394,7 +394,7 @@ func urlscanSearch(c *http.Client, term string, limit int) ([]string, error) {
 	if limit < 1 {
 		return nil, nil
 	}
-	if limit > 2000 {
+	if limit > 5000 {
 		limit = 2000
 	}
 	out := make([]string, 0, limit)
@@ -794,7 +794,7 @@ func rapiddns(c *http.Client, q string, limit int) ([]string, error) {
 	}
 	endpoint := "https://rapiddns.io/subdomain/" + url.PathEscape(d) + "?full=1"
 	req, _ := http.NewRequest(http.MethodGet, endpoint, nil)
-	req.Header.Set("User-Agent", "GlobalHostIntelligence/2.3")
+	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err
@@ -917,11 +917,11 @@ func isHostname(s string) bool {
 }
 
 func AnalyzeHost(host string) string {
-	return AnalyzeHostWithOptions(host, 10, "GlobalHostIntelligence/2.3")
+	return AnalyzeHostWithOptions(host, 10, CurrentBrowserUserAgent)
 }
 
 func AnalyzeHostWithTimeout(host string, timeoutSeconds int) string {
-	return AnalyzeHostWithOptions(host, timeoutSeconds, "GlobalHostIntelligence/2.3")
+	return AnalyzeHostWithOptions(host, timeoutSeconds, CurrentBrowserUserAgent)
 }
 
 func AnalyzeHostWithOptions(host string, timeoutSeconds int, userAgent string) string {
@@ -938,7 +938,7 @@ func AnalyzeHostWithOptions(host string, timeoutSeconds int, userAgent string) s
 	client := &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}
 	for _, scheme := range []string{"https", "http"} {
 		req, _ := http.NewRequest(http.MethodGet, scheme+"://"+host+"/", nil)
-		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("User-Agent", effectiveUserAgent(userAgent))
 		req.Header.Set("Range", "bytes=0-0")
 		resp, err := client.Do(req)
 		if err != nil {
@@ -1046,7 +1046,7 @@ func GenerateRequest(method, host, path, body string) string {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
-	lines := []string{method + " " + path + " HTTP/1.1", "Host: " + host, "User-Agent: GlobalHostIntelligence/1.0", "Accept: */*"}
+	lines := []string{method + " " + path + " HTTP/1.1", "Host: " + host, "User-Agent: " + CurrentBrowserUserAgent, "Accept: */*"}
 	if method == "UPGRADE" {
 		lines = append(lines, "Connection: Upgrade", "Upgrade: websocket")
 	}

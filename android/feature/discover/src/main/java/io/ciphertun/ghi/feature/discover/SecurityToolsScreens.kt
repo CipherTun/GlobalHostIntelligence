@@ -2,7 +2,6 @@ package io.ciphertun.ghi.feature.discover
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Security
@@ -15,41 +14,31 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import io.ciphertun.ghi.core.designsystem.GhiInk900
-import io.ciphertun.ghi.core.ui.components.GhiCard
-import io.ciphertun.ghi.core.ui.components.GhiHero
-import io.ciphertun.ghi.core.ui.components.GhiScreenScaffold
+import io.ciphertun.ghi.core.ui.components.*
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
 @Composable
 fun TlsAnalyzerScreen(onAnalyze: (String) -> String) {
-    ToolJsonScreen(
-        title = "TLS / SSL Analyzer",
-        hero = "Extract the live certificate, TLS version, cipher and ALPN from a host.",
-        icon = Icons.Filled.Security,
-        placeholder = "example.com",
-        action = "ANALYZE TLS",
-        onRun = onAnalyze
-    )
+    ToolJsonScreen("TLS / SSL Analyzer", "Extract the live certificate, TLS version, cipher and ALPN from a host.",
+        Icons.Filled.Security, "example.com", "ANALYZE TLS", "tls", onAnalyze)
 }
 
 @Composable
 fun DnsInspectorScreen(onInspect: (String) -> String) {
-    ToolJsonScreen(
-        title = "DNS Inspector",
-        hero = "Inspect A, AAAA, CNAME, MX, NS, TXT, SRV and PTR records.",
-        icon = Icons.Filled.Dns,
-        placeholder = "example.com",
-        action = "LOOK UP DNS",
-        onRun = onInspect
-    )
+    ToolJsonScreen("DNS Inspector", "Inspect A, AAAA, CNAME, MX, NS, TXT, SRV and PTR records.",
+        Icons.Filled.Dns, "example.com", "LOOK UP DNS", "dns", onInspect)
 }
 
 @Composable
 fun CertificateSearchScreen(onSearch: (String) -> String) {
     var domain by remember { mutableStateOf("") }
     var raw by remember { mutableStateOf("") }
+    var running by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+
     GhiScreenScaffold("Certificate Search") { modifier ->
         LazyColumn(
             modifier.fillMaxSize().padding(16.dp),
@@ -57,30 +46,34 @@ fun CertificateSearchScreen(onSearch: (String) -> String) {
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             item {
-                GhiHero(
-                    "Certificate Transparency",
-                    "Search public certificate records and inspect SANs, issuer, validity and fingerprint evidence."
-                )
+                GhiHero("Certificate Transparency",
+                    "Search public certificate records and inspect SANs, issuer, validity and fingerprint evidence.")
             }
             item {
                 GhiCard {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            domain, { domain = it },
-                            label = { Text("Domain") },
-                            placeholder = { Text("example.com") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        OutlinedTextField(domain, { domain = it }, label = { Text("Domain") },
+                            placeholder = { Text("example.com") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth())
                         Button(
-                            enabled = domain.isNotBlank(),
-                            onClick = { raw = onSearch(domain.trim()) },
+                            enabled = domain.isNotBlank() && !running,
+                            onClick = {
+                                running = true
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    val value = onSearch(domain.trim())
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        raw = value
+                                        running = false
+                                    }
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Filled.Search, null)
                             Spacer(Modifier.width(8.dp))
-                            Text("SEARCH CERTIFICATES")
+                            Text(if (running) "SEARCHING…" else "SEARCH CERTIFICATES")
                         }
+                        GhiBusyIndicator(running, "certificate")
                     }
                 }
             }
@@ -105,11 +98,7 @@ fun CertificateSearchScreen(onSearch: (String) -> String) {
                 }
                 item {
                     Surface(color = GhiInk900.copy(alpha = .86f), shape = MaterialTheme.shapes.medium) {
-                        Text(
-                            raw,
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Text(raw, modifier = Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -124,11 +113,15 @@ private fun ToolJsonScreen(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     placeholder: String,
     action: String,
+    hint: String,
     onRun: (String) -> String
 ) {
     var input by remember { mutableStateOf("") }
     var raw by remember { mutableStateOf("") }
+    var running by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+
     GhiScreenScaffold(title) { modifier ->
         LazyColumn(
             modifier.fillMaxSize().padding(16.dp),
@@ -139,22 +132,28 @@ private fun ToolJsonScreen(
             item {
                 GhiCard {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            input, { input = it },
-                            label = { Text("Host / domain / IP") },
-                            placeholder = { Text(placeholder) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        OutlinedTextField(input, { input = it }, label = { Text("Host / domain / IP") },
+                            placeholder = { Text(placeholder) }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth())
                         Button(
-                            enabled = input.isNotBlank(),
-                            onClick = { raw = onRun(input.trim()) },
+                            enabled = input.isNotBlank() && !running,
+                            onClick = {
+                                running = true
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    val value = onRun(input.trim())
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        raw = value
+                                        running = false
+                                    }
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(icon, null)
                             Spacer(Modifier.width(8.dp))
-                            Text(action)
+                            Text(if (running) "WORKING…" else action)
                         }
+                        GhiBusyIndicator(running, hint)
                     }
                 }
             }
@@ -169,11 +168,7 @@ private fun ToolJsonScreen(
                 }
                 item {
                     Surface(color = GhiInk900.copy(alpha = .86f), shape = MaterialTheme.shapes.medium) {
-                        Text(
-                            prettyJson(raw),
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Text(prettyJson(raw), modifier = Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -183,8 +178,8 @@ private fun ToolJsonScreen(
 
 private data class CertificateRow(val title: String, val detail: String)
 
-private fun certificateRows(raw: String): List<CertificateRow> {
-    return runCatching {
+private fun certificateRows(raw: String): List<CertificateRow> =
+    runCatching {
         val obj = JSONObject(raw)
         val rows = obj.optJSONArray("rows") ?: JSONArray()
         buildList {
@@ -198,7 +193,7 @@ private fun certificateRows(raw: String): List<CertificateRow> {
             }
         }
     }.getOrDefault(emptyList())
-}
 
 private fun prettyJson(raw: String): String =
     runCatching { JSONObject(raw).toString(2) }.getOrElse { raw }
+

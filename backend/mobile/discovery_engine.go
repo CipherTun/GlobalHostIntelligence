@@ -173,8 +173,8 @@ func clampDiscoveryLimit(n int) int {
 	if n < 1 {
 		n = 500
 	}
-	if n > 500 {
-		n = 500
+	if n > 5000 {
+		n = 5000
 	}
 	return n
 }

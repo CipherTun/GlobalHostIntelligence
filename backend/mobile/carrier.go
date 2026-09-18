@@ -14,7 +14,7 @@ func DiscoverCandidates(country string, source string, maxResults int) string {
 	if maxResults < 1 {
 		maxResults = 100
 	}
-	if maxResults > 2000 {
+	if maxResults > 5000 {
 		maxResults = 2000
 	}
 	c := newHTTPClient()
@@ -137,12 +137,27 @@ func GenerateNetworkRequest(network, method, host, path, body string) string {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
+
 	if network == "WEBSOCKET" && method == "GET" {
-		return fmt.Sprintf("GET %s HTTP/1.1\\r\\nHost: %s\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Version: 13\\r\\n\\r\\n", path, host)
+		return fmt.Sprintf(
+			"GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\nAccept: */*\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+			path, host, CurrentBrowserUserAgent,
+		)
 	}
+
 	extra := ""
 	if network == "HTTP UPGRADE" || method == "UPGRADE" {
-		extra = "Connection: Upgrade\\r\\nUpgrade: websocket\\r\\n"
+		extra = "Connection: Upgrade\r\nUpgrade: websocket\r\n"
 	}
-	return fmt.Sprintf("%s %s HTTP/1.1\\r\\nHost: %s\\r\\nUser-Agent: GlobalHostIntelligence/1.0\\r\\nAccept: */*\\r\\n%sContent-Length: %d\\r\\n\\r\\n%s", method, path, host, extra, len(body), body)
+
+	bodyBytes := len([]byte(body))
+	contentLength := ""
+	if method == "POST" || method == "PUT" || method == "PATCH" {
+		contentLength = fmt.Sprintf("Content-Length: %d\r\n", bodyBytes)
+	}
+
+	return fmt.Sprintf(
+		"%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\nAccept: */*\r\n%s%s\r\n%s",
+		method, path, host, CurrentBrowserUserAgent, extra, contentLength, body,
+	)
 }

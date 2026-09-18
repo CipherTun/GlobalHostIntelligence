@@ -136,7 +136,7 @@ func doHTTPCheck(target, proxyText, method, path, headersText, body string, foll
 	if err != nil {
 		return responseHTTPResult{Target: target, Method: method, Error: err.Error()}
 	}
-	req.Header.Set("User-Agent", "GlobalHostIntelligence/2.0")
+	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 	req.Header.Set("Accept", "*/*")
 	if payloadMode && strings.TrimSpace(headersText) != "" {
 		parseRawPayload(req, headersText, proxyText)

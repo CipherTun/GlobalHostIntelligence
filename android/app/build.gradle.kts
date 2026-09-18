@@ -13,8 +13,8 @@ android {
         applicationId = "io.ciphertun.ghi"
         minSdk = 26
         targetSdk = 37
-        versionCode = 400
-        versionName = "4.0.0"
+        versionCode = 410
+        versionName = "4.1.0"
     }
 
     signingConfigs {

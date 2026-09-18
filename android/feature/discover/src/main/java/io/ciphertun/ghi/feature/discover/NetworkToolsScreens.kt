@@ -207,6 +207,8 @@ fun ResponseScreen(
                     onAuthoritative = { authoritative = it }
                 )
 
+                GhiBusyIndicator(running, "response")
+
                 if (mode == "HTTP") {
                     SliderRow("Timeout", timeout, 2f, 30f, "${timeout.toInt()}s") { timeout = it }
                 }
@@ -246,8 +248,6 @@ fun ResponseScreen(
                         }
                     }
                     if (mode == "DNS") DnsVerdict(results)
-                } else if (running) {
-                    LoadingResultCard(targets.lines().firstOrNull { it.isNotBlank() } ?: "Checking…")
                 } else if (mode == "DNS") {
                     Text(
                         "Results will appear here after the DNS path is checked.",
@@ -553,24 +553,6 @@ private fun ResultToolbar(
     }
 }
 
-@Composable
-private fun LoadingResultCard(target: String) {
-    OutlinedCard(
-        border = CardDefaults.outlinedCardBorder(),
-        colors = CardDefaults.outlinedCardColors(containerColor = GhiInk950),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = GhiAccentBlue)
-            Spacer(Modifier.width(12.dp))
-            Text(target, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
 
 @Composable
 private fun ResponseResultCard(item: CheckItem, index: Int, clipboard: androidx.compose.ui.platform.ClipboardManager) {
@@ -839,6 +821,7 @@ fun IpToolsScreen(onResolveDomain: (String) -> String, onResolveIp: (String) -> 
                     running = false
                 }
             }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Icon(if (running) Icons.Filled.Sync else Icons.Filled.Dns, null); Spacer(Modifier.width(8.dp)); Text(if (running) "RESOLVING…" else "RESOLVE") }
+            GhiBusyIndicator(running, "ip")
             if (output.isNotEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("Results • ${output.size}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f)); IconButton(onClick = { clipboard.setText(AnnotatedString(output.joinToString("\n\n") { it.first + "\n" + it.second })) }) { Icon(Icons.Filled.ContentCopy, "Copy all") } }
                 output.forEach { (value, raw) ->

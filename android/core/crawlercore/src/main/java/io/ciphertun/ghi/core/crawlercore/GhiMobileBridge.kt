@@ -56,6 +56,7 @@ object GhiMobileBridge {
     fun redirectMap(target: String, timeoutSeconds: Int = 10) = invoke("redirectMap", target, timeoutSeconds)
     fun networkTiming(target: String, timeoutSeconds: Int = 10) = invoke("networkTiming", target, timeoutSeconds)
     fun technologyFingerprint(target: String, timeoutSeconds: Int = 10) = invoke("technologyFingerprint", target, timeoutSeconds)
+    fun inspectWebSurface(target: String, timeoutSeconds: Int = 10) = invoke("inspectWebSurface", target, timeoutSeconds)
     fun internetSearch(query: String, maxResults: Int = 10) = invoke("internetSearch", query, maxResults)
     fun ghiAgent(query: String) = invoke("ghiAgent", query)
 }

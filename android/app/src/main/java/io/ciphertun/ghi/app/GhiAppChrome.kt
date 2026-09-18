@@ -65,6 +65,11 @@ private val toolLevel = listOf(
         Icons.Filled.Security
     ),
     NavItem(
+        GhiRoute.WEB_SURFACE,
+        "Web Surface",
+        Icons.Filled.Language
+    ),
+    NavItem(
         GhiRoute.AGENT,
         "GHI Agent",
         Icons.Filled.AutoAwesome

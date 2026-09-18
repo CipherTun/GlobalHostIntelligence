@@ -21,6 +21,9 @@ fun GhiSession.networkTiming(target: String): String =
 fun GhiSession.technologyFingerprint(target: String): String =
     GhiMobileBridge.technologyFingerprint(target, validationTimeout())
 
+fun GhiSession.inspectWebSurface(target: String): String =
+    GhiMobileBridge.inspectWebSurface(target, validationTimeout())
+
 fun GhiSession.internetSearch(query: String): String =
     GhiMobileBridge.internetSearch(query, 10)
 

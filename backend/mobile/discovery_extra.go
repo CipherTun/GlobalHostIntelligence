@@ -318,7 +318,7 @@ func DiscoverProjectDiscovery(domain, apiKey string, maxResults int) string {
 	}
 	req.Header.Set("X-API-Key", apiKey)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "GlobalHostIntelligence/4.0")
+	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
 
 	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 	if err != nil {
