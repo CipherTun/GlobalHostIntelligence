@@ -74,7 +74,9 @@ fun GhiWebSurfaceScreen(inspect: (String) -> String) {
                 }
             }
             if (raw.isNotBlank()) {
-                SurfaceResult(raw, clipboard)
+                item {
+                    SurfaceResult(raw, clipboard)
+                }
             }
         }
     }
