@@ -1,0 +1,61 @@
+package io.ciphertun.ghi.core.crawlercore
+
+import org.json.JSONObject
+
+/** Reflection boundary around the generated gomobile Mobile class. */
+object GhiMobileBridge {
+    private const val CLASS_NAME = "io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile"
+    private val mobileClass: Class<*>? get() = runCatching { Class.forName(CLASS_NAME) }.getOrNull()
+
+    private fun invoke(name: String, vararg args: Any): String {
+        val cls = mobileClass ?: return JSONObject().put("ok", false).put("error", "Embedded GHI mobile library is not loaded").toString()
+        return runCatching {
+            val method = cls.methods.firstOrNull { it.name == name && it.parameterTypes.size == args.size }
+                ?: error("Mobile.$name is not available in the embedded library")
+            val adapted = method.parameterTypes.mapIndexed { index, type ->
+                val value = args[index]
+                if (value is Number) when (type) {
+                    java.lang.Integer.TYPE -> value.toInt()
+                    java.lang.Long.TYPE -> value.toLong()
+                    java.lang.Short.TYPE -> value.toShort()
+                    java.lang.Byte.TYPE -> value.toByte()
+                    java.lang.Double.TYPE -> value.toDouble()
+                    java.lang.Float.TYPE -> value.toFloat()
+                    else -> value
+                } else value
+            }.toTypedArray()
+            method.invoke(null, *adapted)?.toString().orEmpty()
+        }.getOrElse { JSONObject().put("ok", false).put("error", it.message ?: "Library call failed").toString() }
+    }
+
+    fun ping() = invoke("ping")
+    fun resolveDomain(fqdn: String) = invoke("resolveDomain", fqdn)
+    fun discover(query: String, maxResults: Int = 100) = invoke("discover", query, maxResults)
+    fun discoverSource(query: String, source: String, maxResults: Int = 100) = invoke("discoverSource", query, source, maxResults)
+    fun discoverCandidates(query: String, source: String, maxResults: Int = 100) = invoke("discoverCandidates", query, source, maxResults)
+    fun discoverRawSource(query: String, source: String, maxResults: Int = 500) = invoke("discoverRawSource", query, source, maxResults)
+    fun discoverCountryFast(country: String, maxResults: Int = 500) = invoke("discoverCountryFast", country, maxResults)
+    fun discoverCountryWorld(country: String, maxResults: Int = 500, providerConfigJson: String = "{}") = invoke("discoverCountryWorld", country, maxResults, providerConfigJson)
+    fun discoverSubdomains(domain: String, maxResults: Int = 500) = invoke("discoverSubdomains", domain, maxResults)
+    fun discoverProjectDiscovery(domain: String, apiKey: String, maxResults: Int = 500) = invoke("discoverProjectDiscovery", domain, apiKey, maxResults)
+    fun discoverCarrier(query: String, maxResults: Int = 100) = invoke("discoverCarrier", query, maxResults)
+    fun analyzeHost(host: String) = invoke("analyzeHost", host)
+    fun analyzeHostWithTimeout(host: String, timeoutSeconds: Int) = invoke("analyzeHostWithTimeout", host, timeoutSeconds)
+    fun analyzeHostWithOptions(host: String, timeoutSeconds: Int, userAgent: String) = invoke("analyzeHostWithOptions", host, timeoutSeconds, userAgent)
+    fun checkHost(host: String, method: String = "GET", allowInsecure: Boolean = false, followRedirects: Boolean = true) = invoke("checkHost", host, method, allowInsecure, followRedirects)
+    fun checkResponse(mode: String, targets: String, proxy: String, method: String, path: String, headers: String, body: String, followRedirects: Boolean, allowInsecure: Boolean, timeoutSeconds: Int, payloadMode: Boolean, dnsTransport: String, resolver: String, authoritative: String) = invoke("checkResponse", mode, targets, proxy, method, path, headers, body, followRedirects, allowInsecure, timeoutSeconds, payloadMode, dnsTransport, resolver, authoritative)
+    fun resolveIp(value: String) = invoke("resolveIP", value)
+    fun generateRequest(method: String, host: String, path: String, body: String) = invoke("generateRequest", method, host, path, body)
+    fun generateNetworkRequest(network: String, method: String, host: String, path: String, body: String) = invoke("generateNetworkRequest", network, method, host, path, body)
+
+    fun analyzeTls(host: String) = invoke("analyzeTLS", host)
+    fun inspectDns(host: String) = invoke("inspectDNS", host)
+    fun searchCertificates(domain: String) = invoke("searchCertificates", domain)
+    fun investigate(target: String, timeoutSeconds: Int = 10) = invoke("investigate", target, timeoutSeconds)
+    fun securityHeaders(target: String, timeoutSeconds: Int = 10) = invoke("securityHeaders", target, timeoutSeconds)
+    fun redirectMap(target: String, timeoutSeconds: Int = 10) = invoke("redirectMap", target, timeoutSeconds)
+    fun networkTiming(target: String, timeoutSeconds: Int = 10) = invoke("networkTiming", target, timeoutSeconds)
+    fun technologyFingerprint(target: String, timeoutSeconds: Int = 10) = invoke("technologyFingerprint", target, timeoutSeconds)
+    fun internetSearch(query: String, maxResults: Int = 10) = invoke("internetSearch", query, maxResults)
+    fun ghiAgent(query: String) = invoke("ghiAgent", query)
+}

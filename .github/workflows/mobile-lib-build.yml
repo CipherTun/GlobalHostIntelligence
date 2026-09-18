@@ -1,0 +1,216 @@
+name: Mobile Core Library (AAR)
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main, dev, no-ads-release]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  build-aar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go 1.27
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      - name: Install Android NDK r29
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;29.0.14206865"
+
+      - name: Configure Android toolchain
+        run: |
+          set -euo pipefail
+
+          NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/29.0.14206865"
+
+          test -d "$NDK_ROOT"
+          test -d "${ANDROID_SDK_ROOT}/platforms/android-35"
+          test -d "${ANDROID_SDK_ROOT}/build-tools/35.0.0"
+
+          echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_HOME=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=${NDK_ROOT}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=${NDK_ROOT}" >> "$GITHUB_ENV"
+
+          echo "ANDROID API: 35"
+          echo "NDK: $NDK_ROOT"
+
+          "$NDK_ROOT/ndk-build" --version || true
+          "${ANDROID_SDK_ROOT}/platform-tools/adb" version
+
+      - name: Compile and unit-test mobile discovery core
+        run: |
+          set -euo pipefail
+          cd backend
+          go test ./mobile -count=1
+
+      - name: Add latest golang.org/x/mobile toolchain to module
+        run: |
+          set -euo pipefail
+          cd backend
+
+          go get golang.org/x/mobile@latest
+
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+
+          export PATH="$(go env GOPATH)/bin:$PATH"
+
+          gomobile version
+          gobind -h >/dev/null
+
+          gomobile init
+
+      - name: Verify gomobile Android environment
+        run: |
+          set -euo pipefail
+
+          export PATH="$(go env GOPATH)/bin:$PATH"
+
+          echo "Go:"
+          go version
+
+          echo "Gomobile:"
+          gomobile version
+
+          echo "Android SDK:"
+          echo "${ANDROID_SDK_ROOT}"
+
+          echo "Android NDK:"
+          echo "${ANDROID_NDK_HOME}"
+
+          test -d "${ANDROID_NDK_HOME}"
+          test -x "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+
+          echo "Android API 35:"
+          test -f "${ANDROID_SDK_ROOT}/platforms/android-35/android.jar"
+
+          echo "ARM32 compiler:"
+          test -x "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang"
+
+          echo "ARM64 compiler:"
+          test -x "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+
+          echo "Android toolchain verification passed."
+
+      - name: Build ARM32 + ARM64 AAR
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          set -euo pipefail
+
+          export PATH="$(go env GOPATH)/bin:$PATH"
+
+          cd backend
+          rm -f ghicore.aar
+
+          gomobile clean || true
+          gomobile init
+
+          gomobile bind \
+            -target=android/arm,android/arm64 \
+            -androidapi 35 \
+            -javapkg=io.ciphertun.ghi.core.crawlercore.generated \
+            -o ghicore.aar \
+            ./mobile
+
+          test -f ghicore.aar
+          ls -lh ghicore.aar
+
+      - name: Verify AAR contents
+        run: |
+          set -euo pipefail
+
+          cd backend
+
+          test -f ghicore.aar
+
+          echo "Checking ARM32..."
+          unzip -l ghicore.aar | grep -q "jni/armeabi-v7a/libgojni.so"
+
+          echo "Checking ARM64..."
+          unzip -l ghicore.aar | grep -q "jni/arm64-v8a/libgojni.so"
+
+          mkdir -p "$RUNNER_TEMP/ghi-aar-check"
+
+          unzip -p ghicore.aar classes.jar \
+            > "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar"
+
+          jar tf "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            | grep -qx \
+            "io/ciphertun/ghi/core/crawlercore/generated/mobile/Mobile.class"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "ping()"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "resolveDomain(java.lang.String)"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "discover(java.lang.String"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "analyzeHost(java.lang.String)"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "generateRequest(java.lang.String"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "checkHost(java.lang.String"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "checkResponse(java.lang.String"
+
+          javap \
+            -classpath "$RUNNER_TEMP/ghi-aar-check/ghi-classes.jar" \
+            io.ciphertun.ghi.core.crawlercore.generated.mobile.Mobile \
+            | grep -q "resolveIP(java.lang.String"
+
+          echo "Verified: ARM32 + ARM64 + Mobile API"
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghi-core-aar
+          path: backend/ghicore.aar
+          if-no-files-found: error

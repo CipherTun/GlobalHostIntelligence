@@ -1,0 +1,272 @@
+name: GHI Release APK - Fresh No R8
+
+on:
+  workflow_run:
+    workflows: ["Mobile Core Library (AAR)"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ghi-release-apk
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout exact AAR source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+
+      - name: Verify release configuration
+        run: |
+          set -euo pipefail
+
+          grep -q 'isMinifyEnabled = false' android/app/build.gradle.kts
+          grep -q 'isShrinkResources = false' android/app/build.gradle.kts
+
+          if grep -R -nE \
+            'isMinifyEnabled[[:space:]]*=[[:space:]]*true|minifyEnabled[[:space:]]+true|shrinkResources[[:space:]]*=[[:space:]]*true|com\.android\.tools\.r8' \
+            android \
+            --include='*.gradle' \
+            --include='*.gradle.kts' \
+            --include='*.properties' \
+            --include='*.pro'
+          then
+            echo "::error::R8/minification configuration detected."
+            exit 1
+          fi
+
+          test -f android/app/src/main/java/io/ciphertun/ghi/app/GhiAdManager.kt
+          test -f android/app/src/main/java/io/ciphertun/ghi/app/GhiAdBanner.kt
+
+          echo "Release configuration verified."
+
+      - name: Verify production ads
+        run: |
+          set -euo pipefail
+
+          grep -q 'play-services-ads:25.4.0' android/app/build.gradle.kts
+          grep -q 'user-messaging-platform:4.0.0' android/app/build.gradle.kts
+          grep -q 'ca-app-pub-3583424243110322~5967822096' \
+            android/app/src/main/AndroidManifest.xml
+          grep -q 'ca-app-pub-3583424243110322/3774929712' \
+            android/app/src/main/java/io/ciphertun/ghi/app/GhiAdManager.kt
+          grep -q 'ca-app-pub-3583424243110322/6485592223' \
+            android/app/src/main/java/io/ciphertun/ghi/app/GhiAdBanner.kt
+
+          echo "Production AdMob configuration verified."
+
+      - name: Download matching fresh AAR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          rm -rf .ci-aar
+          mkdir -p .ci-aar
+
+          gh run download \
+            "${{ github.event.workflow_run.id }}" \
+            --name ghi-core-aar \
+            --dir .ci-aar
+
+          test -s .ci-aar/ghicore.aar
+
+      - name: Inject fresh AAR
+        run: |
+          set -euo pipefail
+
+          cd android
+
+          rm -rf \
+            core/crawlercore/libs \
+            core/crawlercore/src/main/jniLibs
+
+          mkdir -p \
+            core/crawlercore/libs \
+            core/crawlercore/src/main/jniLibs
+
+          rm -rf ../.ci-aar-expanded
+          mkdir -p ../.ci-aar-expanded
+
+          unzip -q ../.ci-aar/ghicore.aar -d ../.ci-aar-expanded
+
+          test -s ../.ci-aar-expanded/classes.jar
+
+          cp ../.ci-aar-expanded/classes.jar \
+            core/crawlercore/libs/ghicore-classes.jar
+
+          if [ -d ../.ci-aar-expanded/jni ]; then
+            cp -a ../.ci-aar-expanded/jni/. \
+              core/crawlercore/src/main/jniLibs/
+          fi
+
+          echo "Fresh AAR injected."
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle without build cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.7.1"
+          cache-disabled: true
+
+      - name: Remove Android and Gradle build state
+        run: |
+          set -euo pipefail
+
+          gradle --stop || true
+
+          rm -rf \
+            "$HOME/.gradle/caches" \
+            "$HOME/.gradle/daemon" \
+            "$HOME/.gradle/notifications" \
+            "$HOME/.gradle/native"
+
+          find android -type d -name build -prune -exec rm -rf {} +
+
+          rm -rf android/.gradle
+
+          rm -rf android/app/build
+
+      - name: Restore release keystore
+        env:
+          GHI_RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+
+          test -n "$GHI_RELEASE_KEYSTORE_B64"
+
+          mkdir -p .ci-signing
+
+          printf "%s" "$GHI_RELEASE_KEYSTORE_B64" \
+            | base64 --decode \
+            > .ci-signing/GlobalHostInteligence-release.keystore
+
+          test -s .ci-signing/GlobalHostInteligence-release.keystore
+
+      - name: Restore signing properties
+        env:
+          LOCAL_PROPERTIES_B64: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          set -euo pipefail
+
+          test -n "$LOCAL_PROPERTIES_B64"
+
+          printf "%s" "$LOCAL_PROPERTIES_B64" \
+            | base64 --decode \
+            > android/local.properties
+
+          test -s android/local.properties
+
+      - name: Prepare release signing
+        env:
+          LOCAL_PROPERTIES_B64: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          set -euo pipefail
+
+          PROPS="$(printf "%s" "$LOCAL_PROPERTIES_B64" | base64 --decode)"
+
+          STORE_PASSWORD="$(printf "%s\n" "$PROPS" \
+            | sed -n 's/^GHI_RELEASE_STORE_PASSWORD=//p')"
+
+          KEY_ALIAS="$(printf "%s\n" "$PROPS" \
+            | sed -n 's/^GHI_RELEASE_KEY_ALIAS=//p')"
+
+          KEY_PASSWORD="$(printf "%s\n" "$PROPS" \
+            | sed -n 's/^GHI_RELEASE_KEY_PASSWORD=//p')"
+
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+
+          echo "::add-mask::$STORE_PASSWORD"
+          echo "::add-mask::$KEY_ALIAS"
+          echo "::add-mask::$KEY_PASSWORD"
+
+          {
+            echo "GHI_RELEASE_STORE_FILE=$GITHUB_WORKSPACE/.ci-signing/GlobalHostInteligence-release.keystore"
+            echo "GHI_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "GHI_RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "GHI_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Build fresh signed release APK
+        run: |
+          set -euo pipefail
+
+          cd android
+
+          gradle clean assembleRelease \
+            --stacktrace \
+            --no-daemon \
+            --no-build-cache \
+            --refresh-dependencies \
+            --rerun-tasks \
+            --console=plain
+
+      - name: Verify APK contains no R8 output
+        run: |
+          set -euo pipefail
+
+          if find android/app/build -type f \
+            \( \
+              -name '*mapping.txt' \
+              -o -name '*usage.txt' \
+              -o -name '*seeds.txt' \
+            \) | grep -q .; then
+            echo "::error::R8 output detected."
+            exit 1
+          fi
+
+          echo "No R8 output detected."
+
+      - name: Verify fresh release APK
+        run: |
+          set -euo pipefail
+
+          APK="$(find android/app/build/outputs/apk/release \
+            -maxdepth 1 \
+            -type f \
+            -name '*.apk' \
+            | head -n 1)"
+
+          test -n "$APK"
+          test -s "$APK"
+
+          unzip -l "$APK" | grep -q 'classes.dex'
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+
+          echo "Fresh signed APK:"
+          echo "$APK"
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghi-release-apk-ads-no-r8
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Cleanup signing material
+        if: always()
+        run: |
+          rm -rf \
+            .ci-signing \
+            .ci-aar \
+            .ci-aar-expanded
+
+          rm -f android/local.properties

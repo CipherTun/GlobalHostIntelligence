@@ -1,0 +1,17 @@
+package io.ciphertun.ghi.core.ui.navigation
+
+object GhiRoute {
+    const val DISCOVER = "discover"
+    const val SUBDOMAINS = "subdomains"
+    const val IP_TOOLS = "ip-tools"
+    const val RESPONSE = "response"
+    const val TLS = "tls"
+    const val DNS = "dns"
+    const val CERTIFICATES = "certificates"
+    const val PAYLOADS = "payloads"
+    const val EXPORT = "export"
+    const val INVESTIGATION = "investigation"
+    const val AGENT = "agent"
+    const val SOURCES = "sources"
+    const val SETTINGS = "settings"
+}

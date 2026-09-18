@@ -1,0 +1,3 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ghi_launcher_foreground">
+    <target android:name="networkGroup" android:animation="@anim/ghi_launcher_pulse" />
+</animated-vector>
