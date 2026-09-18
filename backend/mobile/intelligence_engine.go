@@ -205,7 +205,7 @@ func NetworkTiming(target string, timeoutSeconds int) string {
 		result["dns_error"] = dnsErr.Error()
 	}
 
-	var dnsConnect, tlsHandshake, firstByte time.Duration
+	var dnsConnect, tlsHandshake, firstByte time.Time
 	var status int
 	var protocol string
 	var tlsVersion string
