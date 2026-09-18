@@ -47,6 +47,7 @@ import io.ciphertun.ghi.core.designsystem.GhiSignalRed
 import io.ciphertun.ghi.core.ui.components.GhiScreenScaffold
 import io.ciphertun.ghi.core.ui.components.GhiCard
 import io.ciphertun.ghi.core.ui.components.GhiHero
+import io.ciphertun.ghi.core.ui.components.GhiBusyIndicator
 import io.ciphertun.ghi.core.designsystem.GhiSlate300
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
