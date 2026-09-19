@@ -71,10 +71,31 @@ object GhiAdManager {
     private var interstitial: InterstitialAd? = null
 
     @Volatile
+    private var interstitialLoadedAt = 0L
+
+    @Volatile
     private var lastShownAt = 0L
 
     @Volatile
     private var automaticAdsAllowedAfter = Long.MAX_VALUE
+
+    private const val MAX_CACHED_AD_AGE_MS = 50L * 60L * 1000L
+
+    private val RETRY_DELAYS_MS = longArrayOf(
+        30_000L,
+        60_000L,
+        120_000L,
+        300_000L
+    )
+
+    private var retryAttempt = 0
+    private var retryScheduled = false
+    private var applicationContext: Context? = null
+
+    private val retryRunnable = Runnable {
+        retryScheduled = false
+        applicationContext?.let { preload(it) }
+    }
 
     private fun isDebug(context: Context): Boolean =
         (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -94,6 +115,7 @@ object GhiAdManager {
         context: Context,
         adsAllowed: Boolean
     ) {
+        applicationContext = context.applicationContext
         canRequestAds = adsAllowed
 
         if (!adsAllowed) {
@@ -142,7 +164,21 @@ object GhiAdManager {
         if (!initialized) return
         if (!canRequestAds) return
         if (loading) return
-        if (interstitial != null) return
+
+        val loadedAd = interstitial
+        if (loadedAd != null) {
+            val age = System.currentTimeMillis() - interstitialLoadedAt
+            if (age < MAX_CACHED_AD_AGE_MS) {
+                return
+            }
+
+            Log.d(
+                TAG,
+                "Discarding expired interstitial cache: age=${age}ms"
+            )
+            interstitial = null
+            interstitialLoadedAt = 0L
+        }
 
         loading = true
 
@@ -158,7 +194,10 @@ object GhiAdManager {
                     ) {
                         loading = false
                         interstitial = ad
-
+                        interstitialLoadedAt = System.currentTimeMillis()
+                        retryAttempt = 0
+                        retryScheduled = false
+                        mainHandler.removeCallbacks(retryRunnable)
                         Log.d(
                             TAG,
                             "Interstitial loaded"
@@ -170,31 +209,67 @@ object GhiAdManager {
                     ) {
                         loading = false
                         interstitial = null
+                        interstitialLoadedAt = 0L
 
                         Log.w(
                             TAG,
-                            "Interstitial unavailable: ${error.message}"
+                            "Interstitial unavailable: code=${error.code}, domain=${error.domain}, message=${error.message}"
                         )
+
+                        scheduleRetry()
                     }
                 }
             )
         } catch (t: Throwable) {
             loading = false
             interstitial = null
+            interstitialLoadedAt = 0L
 
             Log.e(
                 TAG,
                 "Interstitial request failed",
                 t
             )
+
+            scheduleRetry()
         }
+    }
+
+    private fun scheduleRetry() {
+        if (!canRequestAds) return
+        if (interstitial != null) return
+        if (loading) return
+        if (retryScheduled) return
+
+        val index = retryAttempt.coerceAtMost(RETRY_DELAYS_MS.lastIndex)
+        val delay = RETRY_DELAYS_MS[index]
+        retryAttempt++
+        retryScheduled = true
+
+        Log.d(TAG, "Scheduling interstitial retry in ${delay}ms")
+        mainHandler.postDelayed(retryRunnable, delay)
     }
 
     fun isReady(): Boolean =
         initialized && canRequestAds
 
-    fun isInterstitialLoaded(): Boolean =
-        interstitial != null
+    fun isInterstitialLoaded(): Boolean {
+        val ad = interstitial ?: return false
+        val age = System.currentTimeMillis() - interstitialLoadedAt
+
+        if (age >= MAX_CACHED_AD_AGE_MS) {
+            interstitial = null
+            interstitialLoadedAt = 0L
+            Log.d(
+                TAG,
+                "Interstitial cache expired while checking readiness"
+            )
+            scheduleRetry()
+            return false
+        }
+
+        return true
+    }
 
     /**
      * Automatically displays a normal interstitial when:
@@ -221,6 +296,19 @@ object GhiAdManager {
 
         val now = System.currentTimeMillis()
 
+        if (
+            interstitial != null &&
+            now - interstitialLoadedAt >= MAX_CACHED_AD_AGE_MS
+        ) {
+            Log.d(
+                TAG,
+                "Discarding expired interstitial before show"
+            )
+            interstitial = null
+            interstitialLoadedAt = 0L
+            scheduleRetry()
+        }
+
         if (now < automaticAdsAllowedAfter) {
             preload(activity)
             return false
@@ -237,12 +325,14 @@ object GhiAdManager {
         }
 
         interstitial = null
-        lastShownAt = now
+        interstitialLoadedAt = 0L
 
         ad.fullScreenContentCallback =
             object : FullScreenContentCallback() {
 
                 override fun onAdShowedFullScreenContent() {
+                    lastShownAt = System.currentTimeMillis()
+                    Log.d(TAG, "Cooldown started after actual fullscreen show")
                     Log.d(
                         TAG,
                         "Interstitial shown"
@@ -252,7 +342,7 @@ object GhiAdManager {
                 override fun onAdImpression() {
                     Log.d(
                         TAG,
-                        "Interstitial impression"
+                        "Interstitial impression recorded"
                     )
                 }
 
@@ -270,6 +360,7 @@ object GhiAdManager {
                     )
 
                     interstitial = null
+                    interstitialLoadedAt = 0L
                     preload(activity)
                     onFinished()
                 }
@@ -283,6 +374,7 @@ object GhiAdManager {
                     )
 
                     interstitial = null
+                    interstitialLoadedAt = 0L
                     preload(activity)
                     onFinished()
                 }
