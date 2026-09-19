@@ -1,38 +1,226 @@
-# Global Host Intelligence
+# GlobalHostIntelligence (GHI)
 
-Global Host Intelligence (GHI) 4.1 is an Android network-intelligence toolkit with an embedded Go engine. The APK works without a separate server or Termux installation.
+<p align="center">
+  <strong>Android Network Intelligence & Host Discovery Toolkit</strong><br>
+  Built for practical DNS, HTTP, TLS, certificate, subdomain and host investigation.
+</p>
 
-## Features
+<p align="center">
+  <a href="https://github.com/CipherTun/GlobalHostIntelligence/releases">Releases</a> ·
+  <a href="https://github.com/CipherTun/GlobalHostIntelligence/issues">Issues</a> ·
+  <a href="https://github.com/CipherTun/GlobalHostIntelligence/security">Security</a>
+</p>
 
-- **Discovery** — parallel passive discovery using multiple public sources, live validation, source/error reporting, and hostname analysis.
-- **Subdomains** — discover and validate subdomains for a target domain.
-- **Response Checker** — HTTP/HTTPS request testing with methods, headers, body, redirects, TLS handling, timeout control, DNS/resolver options, and response details.
-- **IP / Domain tools** — resolve domains to IP addresses and IP addresses back to observed domains.
-- **Payload Generator** — construct and validate protocol-valid HTTP/1.1 requests, with current Chrome Android UA, custom headers/body, raw/absolute/keep-alive/WebSocket handshake variants, cURL export, and Fetch export.
-- **TLS Analyzer** — inspect TLS version, cipher, ALPN, certificates, fingerprints, and peer-chain information.
-- **DNS Inspector** — inspect common DNS record types and reverse lookups where available.
-- **Certificate Search** — search public Certificate Transparency data.
-- **Investigation** — run host, DNS, TLS, security-header, redirect, timing, technology, web-surface, and certificate analysis together.
-- **GHI Agent** — route plain-language requests to real local engines or public web search; it does not pretend to be a remote LLM.
-- **Web Surface Inspector** — inspect the landing page plus robots.txt, sitemap.xml, security.txt, Android/iOS association files, and manifest metadata without recursive crawling.
-- **Thinking state** — a local Gemini-inspired spectrum spark appears on long-running operations, preceded by a thin contextual message; it reports UI work rather than fabricated backend progress.
-- **Export** — export discovered live hosts as text, CSV, or JSON.
-- **Configurable engine** — discovery limits, validation workers, source parallelism, timeout, user-agent, sources, animations, and compact results.
-- **Production AdMob** — consent-aware banner advertising and rate-limited rewarded-interstitial breaks. Debug builds use Google's test ad units; release builds use the configured production units.
-- **Privacy options** — access the Google ad privacy controls from Settings when available.
-- **ARM support** — the release pipeline packages the embedded Go engine for `armeabi-v7a` and `arm64-v8a`.
+## Overview
 
-## How to use
+**GlobalHostIntelligence (GHI)** is an Android network-intelligence toolkit with an embedded Go engine. The application is designed to provide useful host and network investigation capabilities directly on Android without requiring a separate server or Termux installation.
 
-1. Open GHI and wait for the three-second startup screen.
-2. Open **Discovery** from the bottom navigation or the menu.
-3. Enter a country code, ASN, or domain scope supported by the discovery screen and start a scan.
-4. Watch the live validated results appear while discovery sources run in parallel.
-5. Tap a hostname to expand its details. Tap it again to collapse it.
-6. Use **Subdomains**, **Response Checker**, **IP / Domain**, **Payload Generator**, **TLS**, **DNS**, **Certificates**, **Investigation**, **GHI Agent**, and **Web Surface** from the menu when you need a specific investigation tool.
-7. Use **Export** when you want the current live-host result set as text, CSV, or JSON.
-8. Open **Settings** to tune the discovery engine and interface. Ad banners and automatic ad breaks are not shown on Settings.
+GHI combines discovery, live validation and focused network-analysis tools in one Android application.
 
-## Build
+> **Project status:** Active development. Features and interfaces may continue to evolve between releases.
 
-GitHub Actions builds the embedded Go AAR first, then injects that exact AAR into the Android build. The release workflow verifies the source revision and native ARM libraries before publishing the signed APK artifact.
+## What GHI can do
+
+### Host & subdomain discovery
+
+- Parallel passive discovery using multiple public/free sources.
+- Candidate hostname normalization and de-duplication.
+- Concurrent HTTP/HTTPS validation.
+- Live-host identification and source/error reporting.
+- Hostname details that can be expanded directly from results.
+- Configurable discovery limits, validation workers, source parallelism and timeouts.
+
+### HTTP / HTTPS response testing
+
+The Response Checker provides an HTTP Custom-style testing workflow with support for:
+
+- GET
+- HEAD
+- POST
+- PUT
+- PATCH
+- OPTIONS
+- Custom headers
+- Request bodies
+- Redirect handling
+- TLS handling
+- Timeout control
+- DNS/resolver diagnostics
+- Status and response details
+- Response preview and copy controls
+
+### IP and domain intelligence
+
+- Domain → IP resolution.
+- IP → observed domain lookup.
+- Multiple inputs can be processed concurrently.
+- Results are normalized for investigation workflows.
+
+### Payload generation
+
+Generate protocol-valid HTTP/1.1 request variants from a target, including:
+
+- Standard HTTP/HTTPS requests.
+- Raw and absolute-form requests.
+- Keep-alive variants.
+- WebSocket handshake variants.
+- Custom headers and body content.
+- cURL export.
+- Fetch export.
+- Per-payload and Copy All controls.
+
+### TLS / SSL analysis
+
+Inspect available TLS connection information including:
+
+- TLS version.
+- Cipher.
+- ALPN.
+- Certificate metadata.
+- SHA-256 certificate fingerprint.
+- Leaf certificate PEM.
+- Peer certificate chain information.
+
+### DNS inspection
+
+Inspect common DNS records where available:
+
+`A` · `AAAA` · `CNAME` · `MX` · `NS` · `TXT` · `SRV` · `PTR`
+
+### Certificate Transparency search
+
+Search public Certificate Transparency data for domain and certificate information.
+
+### Investigation workflow
+
+GHI can combine host, DNS, TLS, security-header, redirect, timing, technology, web-surface and certificate information into a broader investigation workflow.
+
+### Web Surface Inspector
+
+Inspect the target's public web surface without recursive crawling, including:
+
+- Landing page metadata.
+- `robots.txt`.
+- `sitemap.xml`.
+- `security.txt`.
+- Android association metadata.
+- iOS association metadata.
+- Web manifest metadata.
+
+### GHI Agent
+
+The GHI Agent routes plain-language requests to real local engines or supported public web search functionality. It is designed to expose actual tool results rather than fabricate remote-LLM activity.
+
+### Export
+
+Export discovered live hosts as:
+
+- TXT
+- CSV
+- JSON
+
+## Android support
+
+| Target | Support |
+|---|---|
+| Android | Android 8.0+ (`minSdk 26`) |
+| ARM 32-bit | `armeabi-v7a` |
+| ARM 64-bit | `arm64-v8a` |
+| Application ID | `io.ciphertun.ghi` |
+| Current version | `4.1.0` |
+| Compile SDK | 37 |
+| Target SDK | 37 |
+| Java | 17 |
+
+The release pipeline packages the embedded native Go engine for the Android ARM ABIs used by the project.
+
+## Download
+
+Official builds are published through the repository's **Releases** page when a release is created:
+
+**[Download GHI releases](https://github.com/CipherTun/GlobalHostIntelligence/releases)**
+
+GitHub Actions also produces release APK artifacts from the project's release workflow.
+
+> The repository currently has no GitHub Release published. The first formal release can be created after the release APK workflow completes successfully.
+
+## Screenshots
+
+Screenshots should show the actual current application UI rather than mocked or unrelated images.
+
+Recommended public screenshots:
+
+1. Discovery screen.
+2. Live discovery results with hostname details expanded.
+3. Response Checker.
+4. Payload Generator.
+5. TLS/DNS analysis.
+6. Settings.
+7. Main navigation/menu.
+
+Place verified screenshots under `docs/screenshots/` and add them to this section using relative Markdown image paths.
+
+## Build architecture
+
+GHI uses a two-stage Android build pipeline:
+
+1. The mobile core is built as an AAR.
+2. The release workflow downloads the matching AAR from the successful Actions run.
+3. The AAR is injected into the Android project.
+4. Android is built with Gradle.
+5. The signed release APK is verified and uploaded as an Actions artifact.
+
+The release configuration currently disables R8/minification and resource shrinking to keep the release build predictable.
+
+## Development
+
+The project is primarily Kotlin/Jetpack Compose on Android with an embedded Go-based engine.
+
+Current Android build configuration includes:
+
+- Android Gradle Plugin / Gradle-based Android build.
+- Kotlin + Jetpack Compose.
+- Hilt dependency injection.
+- AndroidX lifecycle/navigation components.
+- Google Mobile Ads SDK.
+- User Messaging Platform for ad consent.
+
+## Advertising
+
+The application contains consent-aware advertising and rate-limited ad experiences.
+
+The repository's production AdMob configuration is intentionally kept in the application source and release verification workflow. **Do not replace, remove or publish private advertising/account credentials.**
+
+## Privacy & responsible use
+
+GHI is a network-intelligence and diagnostic tool. Only investigate systems, domains and networks that you own or have explicit permission to test.
+
+Some discovery and Certificate Transparency features use public internet data. Availability, accuracy and freshness of third-party data sources can change independently of GHI.
+
+## Security
+
+Please do **not** report sensitive vulnerabilities in a public issue.
+
+See [`SECURITY.md`](SECURITY.md) for the responsible disclosure process.
+
+## Contributing
+
+Contributions, bug reports, documentation improvements and feature proposals are welcome.
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
+
+## License
+
+GlobalHostIntelligence is released under the **MIT License**.
+
+See [`LICENSE`](LICENSE) for the full license text.
+
+## Project links
+
+- Repository: https://github.com/CipherTun/GlobalHostIntelligence
+- Releases: https://github.com/CipherTun/GlobalHostIntelligence/releases
+- Issues: https://github.com/CipherTun/GlobalHostIntelligence/issues
+- Security: https://github.com/CipherTun/GlobalHostIntelligence/security
+
+
+**Included example:** `docs/screenshots/08-discovery-with-ad.png` — Discovery screen with an advertisement placement.

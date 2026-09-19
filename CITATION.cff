@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: "GlobalHostIntelligence"
+message: "If you use GlobalHostIntelligence in research or software, please cite the project repository."
+type: software
+authors:
+  - family-names: "CipherTun"
+repository-code: "https://github.com/CipherTun/GlobalHostIntelligence"
+url: "https://github.com/CipherTun/GlobalHostIntelligence"
+license: "MIT"
+version: "4.1.0"
+date-released: "2026-09-19"
+keywords:
+  - android
+  - network-intelligence
+  - host-discovery
+  - subdomain-enumeration
+  - dns
+  - tls
+  - ssl
+  - http
+  - https
+  - certificate-transparency
+  - cybersecurity
+  - reconnaissance
+  - armv7
+  - armeabi-v7a
