@@ -26,8 +26,6 @@ class GhiApplication :
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        super<DefaultLifecycleObserver>.onStart(owner)
-
         currentActivity?.let {
             GhiExtraAdManager.onForeground(it)
         }
