@@ -26,6 +26,7 @@ import io.ciphertun.ghi.core.ui.components.LocalGhiOpenDrawer
 import io.ciphertun.ghi.core.ui.navigation.GhiRoute
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 private data class NavItem(
     val route: String,
@@ -34,51 +35,15 @@ private data class NavItem(
 )
 
 private val toolLevel = listOf(
-    NavItem(
-        GhiRoute.DISCOVER,
-        "Discovery",
-        Icons.Filled.Explore
-    ),
-    NavItem(
-        GhiRoute.SUBDOMAINS,
-        "Subdomains",
-        Icons.Filled.Dns
-    ),
-    NavItem(
-        GhiRoute.RESPONSE,
-        "Response Checker",
-        Icons.Filled.Language
-    ),
-    NavItem(
-        GhiRoute.IP_TOOLS,
-        "IP / Domain",
-        Icons.Filled.Public
-    ),
-    NavItem(
-        GhiRoute.PAYLOADS,
-        "Payload Generator",
-        Icons.Filled.Bolt
-    ),
-    NavItem(
-        GhiRoute.INVESTIGATION,
-        "Investigation",
-        Icons.Filled.Security
-    ),
-    NavItem(
-        GhiRoute.WEB_SURFACE,
-        "Web Surface",
-        Icons.Filled.Language
-    ),
-    NavItem(
-        GhiRoute.AGENT,
-        "GHI Agent",
-        Icons.Filled.AutoAwesome
-    ),
-    NavItem(
-        GhiRoute.SETTINGS,
-        "Settings",
-        Icons.Filled.Settings
-    )
+    NavItem(GhiRoute.DISCOVER, "Discovery", Icons.Filled.Explore),
+    NavItem(GhiRoute.SUBDOMAINS, "Subdomains", Icons.Filled.Dns),
+    NavItem(GhiRoute.RESPONSE, "Response Checker", Icons.Filled.Language),
+    NavItem(GhiRoute.IP_TOOLS, "IP / Domain", Icons.Filled.Public),
+    NavItem(GhiRoute.PAYLOADS, "Payload Generator", Icons.Filled.Bolt),
+    NavItem(GhiRoute.INVESTIGATION, "Investigation", Icons.Filled.Security),
+    NavItem(GhiRoute.WEB_SURFACE, "Web Surface", Icons.Filled.Language),
+    NavItem(GhiRoute.AGENT, "GHI Agent", Icons.Filled.AutoAwesome),
+    NavItem(GhiRoute.SETTINGS, "Settings", Icons.Filled.Settings)
 )
 
 private val bottomLevel = listOf(
@@ -87,9 +52,7 @@ private val bottomLevel = listOf(
     GhiRoute.RESPONSE,
     GhiRoute.IP_TOOLS
 ).mapNotNull { route ->
-    toolLevel.firstOrNull {
-        it.route == route
-    }
+    toolLevel.firstOrNull { it.route == route }
 }
 
 @Composable
@@ -97,36 +60,34 @@ fun GhiAppChrome(
     navController: NavHostController =
         rememberNavController()
 ) {
-    val drawer =
-        rememberDrawerState(DrawerValue.Closed)
-
-    val scope =
-        rememberCoroutineScope()
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     val current by
         navController.currentBackStackEntryAsState()
 
-    val route =
-        current?.destination?.route
+    val route = current?.destination?.route
 
-    val context =
-        LocalContext.current
-
-    val activity =
-        context as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
 
     val adsReady by
         GhiAdManager.ready.collectAsState()
 
-    /*
-     * First route is deliberately ignored.
-     *
-     * Every later navigation transition becomes a natural interstitial
-     * opportunity. GhiAdManager itself enforces the one-minute initial
-     * delay and one-minute presentation cooldown.
-     */
     var previousRoute by
         remember { mutableStateOf<String?>(null) }
+
+    /*
+     * Native Advanced is a layout ad, so it is not mixed into the
+     * fullscreen transition pool. Instead, eligible screens randomly
+     * receive it while the existing banner remains independent.
+     */
+    val showNativeAd = remember(route, adsReady) {
+        route != null &&
+            route != GhiRoute.SETTINGS &&
+            adsReady &&
+            Random.nextInt(100) < 35
+    }
 
     LaunchedEffect(
         route,
@@ -159,10 +120,6 @@ fun GhiAppChrome(
         val currentActivity = activity
             ?: return@LaunchedEffect
 
-        /*
-         * Give Compose/navigation time to finish the transition before
-         * presenting the full-screen ad.
-         */
         delay(700L)
 
         GhiAdManager.showIfReady(
@@ -278,17 +235,13 @@ fun GhiAppChrome(
                             item {
                                 NavigationDrawerItem(
                                     label = {
-                                        Text(
-                                            navItem.label
-                                        )
+                                        Text(navItem.label)
                                     },
                                     selected =
                                         route ==
                                             navItem.route,
                                     onClick = {
-                                        go(
-                                            navItem.route
-                                        )
+                                        go(navItem.route)
                                     },
                                     icon = {
                                         Icon(
@@ -320,21 +273,27 @@ fun GhiAppChrome(
 
                 bottomBar = {
                     Column {
-
-                        /*
-                         * Production banner remains automatic.
-                         */
                         if (
-                            route !=
-                                GhiRoute.SETTINGS &&
+                            showNativeAd &&
+                            route != GhiRoute.SETTINGS
+                        ) {
+                            GhiNativeAd(
+                                modifier = Modifier.padding(
+                                    horizontal = 8.dp,
+                                    vertical = 4.dp
+                                )
+                            )
+                        }
+
+                        if (
+                            route != GhiRoute.SETTINGS &&
                             adsReady
                         ) {
                             GhiAdBanner()
                         }
 
                         NavigationBar(
-                            containerColor =
-                                GhiInk900,
+                            containerColor = GhiInk900,
                             tonalElevation = 0.dp
                         ) {
                             bottomLevel.forEach { item ->
@@ -343,9 +302,7 @@ fun GhiAppChrome(
                                         route ==
                                             item.route,
                                     onClick = {
-                                        go(
-                                            item.route
-                                        )
+                                        go(item.route)
                                     },
                                     icon = {
                                         Icon(
@@ -365,7 +322,6 @@ fun GhiAppChrome(
                     }
                 }
             ) { padding ->
-
                 Box(
                     Modifier
                         .fillMaxSize()

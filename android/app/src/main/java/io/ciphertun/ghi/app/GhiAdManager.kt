@@ -19,20 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * GHI Google Mobile Ads controller.
- *
- * Production:
- *   Normal Interstitial:
- *   ca-app-pub-3583424243110322/3774929712
- *
- * Production banner remains in GhiAdBanner.kt.
- *
- * Ads remain isolated from the discovery/core execution path.
- * Any Google Mobile Ads failure must never prevent GHI from starting.
- */
 object GhiAdManager {
-
     private const val TAG = "GhiAdManager"
 
     private const val PRODUCTION_INTERSTITIAL =
@@ -41,16 +28,7 @@ object GhiAdManager {
     private const val TEST_INTERSTITIAL =
         "ca-app-pub-3940256099942544/1033173712"
 
-    /*
-     * Do not show an interstitial immediately when the application starts.
-     * The first automatic opportunity becomes available after one minute.
-     */
     private const val FIRST_AD_DELAY_MS = 60_000L
-
-    /*
-     * Never present automatic interstitials more frequently than once
-     * every 60 seconds.
-     */
     private const val COOLDOWN_MS = 60_000L
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -78,6 +56,9 @@ object GhiAdManager {
 
     @Volatile
     private var automaticAdsAllowedAfter = Long.MAX_VALUE
+
+    @Volatile
+    private var fullscreenAdActive = false
 
     private const val MAX_CACHED_AD_AGE_MS = 50L * 60L * 1000L
 
@@ -107,9 +88,6 @@ object GhiAdManager {
             PRODUCTION_INTERSTITIAL
         }
 
-    /**
-     * Called after UMP consent has been updated.
-     */
     @MainThread
     fun initialize(
         context: Context,
@@ -139,6 +117,7 @@ object GhiAdManager {
 
                 mainHandler.post {
                     preload(appContext)
+                    GhiExtraAdManager.initialize(appContext)
                 }
 
                 Log.d(TAG, "Google Mobile Ads initialized")
@@ -156,9 +135,6 @@ object GhiAdManager {
         }
     }
 
-    /**
-     * Preloads one normal interstitial.
-     */
     @MainThread
     fun preload(context: Context) {
         if (!initialized) return
@@ -188,20 +164,15 @@ object GhiAdManager {
                 adUnitId(context),
                 AdRequest.Builder().build(),
                 object : InterstitialAdLoadCallback() {
-
-                    override fun onAdLoaded(
-                        ad: InterstitialAd
-                    ) {
+                    override fun onAdLoaded(ad: InterstitialAd) {
                         loading = false
                         interstitial = ad
-                        interstitialLoadedAt = System.currentTimeMillis()
+                        interstitialLoadedAt =
+                            System.currentTimeMillis()
                         retryAttempt = 0
                         retryScheduled = false
                         mainHandler.removeCallbacks(retryRunnable)
-                        Log.d(
-                            TAG,
-                            "Interstitial loaded"
-                        )
+                        Log.d(TAG, "Interstitial loaded")
                     }
 
                     override fun onAdFailedToLoad(
@@ -254,7 +225,8 @@ object GhiAdManager {
         initialized && canRequestAds
 
     fun isInterstitialLoaded(): Boolean {
-        val ad = interstitial ?: return false
+        if (interstitial == null) return false
+
         val age = System.currentTimeMillis() - interstitialLoadedAt
 
         if (age >= MAX_CACHED_AD_AGE_MS) {
@@ -271,26 +243,30 @@ object GhiAdManager {
         return true
     }
 
-    /**
-     * Automatically displays a normal interstitial when:
-     *
-     * - Google Mobile Ads initialized
-     * - consent permits ads
-     * - the first one-minute delay has elapsed
-     * - the 60-second presentation cooldown has elapsed
-     * - a real interstitial has already loaded
-     *
-     * There is deliberately no custom confirmation dialog.
-     */
+    fun isFullscreenAdActive(): Boolean =
+        fullscreenAdActive
+
+    fun markExternalFullscreenStart() {
+        fullscreenAdActive = true
+        lastShownAt = System.currentTimeMillis()
+    }
+
+    fun markExternalFullscreenEnd() {
+        fullscreenAdActive = false
+    }
+
     @MainThread
     fun showIfReady(
         activity: Activity,
         onFinished: () -> Unit = {}
     ): Boolean {
-
         if (!initialized || !canRequestAds) {
             preload(activity)
             onFinished()
+            return false
+        }
+
+        if (fullscreenAdActive) {
             return false
         }
 
@@ -331,8 +307,12 @@ object GhiAdManager {
             object : FullScreenContentCallback() {
 
                 override fun onAdShowedFullScreenContent() {
+                    fullscreenAdActive = true
                     lastShownAt = System.currentTimeMillis()
-                    Log.d(TAG, "Cooldown started after actual fullscreen show")
+                    Log.d(
+                        TAG,
+                        "Cooldown started after actual fullscreen show"
+                    )
                     Log.d(
                         TAG,
                         "Interstitial shown"
@@ -354,6 +334,8 @@ object GhiAdManager {
                 }
 
                 override fun onAdDismissedFullScreenContent() {
+                    fullscreenAdActive = false
+
                     Log.d(
                         TAG,
                         "Interstitial dismissed"
@@ -368,6 +350,8 @@ object GhiAdManager {
                 override fun onAdFailedToShowFullScreenContent(
                     adError: AdError
                 ) {
+                    fullscreenAdActive = false
+
                     Log.w(
                         TAG,
                         "Interstitial failed to show: ${adError.message}"
@@ -384,6 +368,8 @@ object GhiAdManager {
             ad.show(activity)
             true
         } catch (t: Throwable) {
+            fullscreenAdActive = false
+
             Log.e(
                 TAG,
                 "Interstitial presentation failed",
