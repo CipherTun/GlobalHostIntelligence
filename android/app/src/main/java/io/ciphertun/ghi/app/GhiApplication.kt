@@ -17,7 +17,7 @@ class GhiApplication :
     private var currentActivity: Activity? = null
 
     override fun onCreate() {
-        super.onCreate()
+        super<Application>.onCreate()
 
         registerActivityLifecycleCallbacks(this)
         ProcessLifecycleOwner.get()
