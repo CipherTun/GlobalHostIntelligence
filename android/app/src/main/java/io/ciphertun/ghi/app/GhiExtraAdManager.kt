@@ -12,7 +12,6 @@ import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.appopen.AppOpenAd
-import com.google.android.gms.ads.appopen.AppOpenAdLoadCallback
 import com.google.android.gms.ads.rewarded.RewardItem
 import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
@@ -141,7 +140,7 @@ object GhiExtraAdManager {
                 context.applicationContext,
                 appOpenUnitId(context),
                 AdRequest.Builder().build(),
-                object : AppOpenAdLoadCallback() {
+                object : AppOpenAd.AppOpenAdLoadCallback() {
                     override fun onAdLoaded(ad: AppOpenAd) {
                         appOpenLoading = false
                         appOpenAd = ad
