@@ -230,7 +230,21 @@ class GhiSession(context: Context) {
             .putBoolean("animations", animations).putBoolean("compact_results", compact).apply()
     }
 
-    fun resetSettings() = prefs.edit().clear().apply()
+    fun resetSettings() {
+        // Reset only settings owned by this screen. Keep provider credentials and other
+        // persisted data intact.
+        prefs.edit()
+            .remove("discovery_limit")
+            .remove("validation_threads")
+            .remove("source_parallelism")
+            .remove("validation_timeout")
+            .remove("user_agent")
+            .remove("enabled_sources")
+            .remove("project_discovery_api_key")
+            .remove("animations")
+            .remove("compact_results")
+            .apply()
+    }
 
     companion object {
         const val DEFAULT_BROWSER_USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36"

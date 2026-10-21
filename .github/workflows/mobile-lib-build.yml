@@ -21,7 +21,7 @@ jobs:
       - name: Setup Go 1.27
         uses: actions/setup-go@v6
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.3"
           cache-dependency-path: backend/go.sum
 
       - name: Setup Java 17
@@ -72,10 +72,14 @@ jobs:
           set -euo pipefail
           cd backend
 
-          go get golang.org/x/mobile@latest
+          # Pin the Go Mobile source revision so a future upstream commit
+          # cannot silently change generated bindings or break the Android build.
+          MOBILE_VERSION="v0.0.0-20261011034528-197770444867"
 
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          go get "golang.org/x/mobile@${MOBILE_VERSION}"
+
+          go install "golang.org/x/mobile/cmd/gomobile@${MOBILE_VERSION}"
+          go install "golang.org/x/mobile/cmd/gobind@${MOBILE_VERSION}"
 
           export PATH="$(go env GOPATH)/bin:$PATH"
 

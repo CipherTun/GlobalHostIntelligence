@@ -68,19 +68,64 @@ jobs:
         with:
           gradle-version: "9.7.1"
 
+      - name: Install Android SDK tools for native alignment checks
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-37 build-tools;37.0.0 ndk;29.0.14206865"
+
       - name: Unit tests
         run: cd android && gradle testDebugUnitTest --stacktrace --no-daemon
 
       - name: Assemble debug APK
         run: cd android && gradle assembleDebug --stacktrace --no-daemon
 
-      - name: Verify native ABIs in APK
+      - name: Verify native ABIs and 16 KB page-size compatibility
+        shell: bash
         run: |
+          set -euo pipefail
           cd android
-          APK="app/build/outputs/apk/debug/$(ls app/build/outputs/apk/debug/*.apk | xargs -n1 basename | head -1)"
+
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          test -s "$APK"
+
           unzip -l "$APK" | grep -q 'lib/armeabi-v7a/libgojni.so'
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
           echo "Verified: APK contains armeabi-v7a + arm64-v8a native libraries"
+
+          NDK="$ANDROID_HOME/ndk/29.0.14206865"
+          LLVM_READelf="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          ZIPALIGN="$ANDROID_HOME/build-tools/37.0.0/zipalign"
+          test -x "$LLVM_READelf"
+          test -x "$ZIPALIGN"
+
+          rm -rf "$RUNNER_TEMP/ghi-page-size-check"
+          mkdir -p "$RUNNER_TEMP/ghi-page-size-check"
+          unzip -p "$APK" lib/arm64-v8a/libgojni.so \
+            > "$RUNNER_TEMP/ghi-page-size-check/libgojni-arm64.so"
+          unzip -p "$APK" lib/armeabi-v7a/libgojni.so \
+            > "$RUNNER_TEMP/ghi-page-size-check/libgojni-arm32.so"
+
+          LIB="$RUNNER_TEMP/ghi-page-size-check/libgojni-arm64.so"
+          echo "Checking 64-bit ELF LOAD alignment: $LIB"
+          "$LLVM_READelf" -lW "$LIB" \
+            | awk '$1 == "LOAD" { print $NF }' \
+            > "$RUNNER_TEMP/ghi-page-size-check/alignments.txt"
+          test -s "$RUNNER_TEMP/ghi-page-size-check/alignments.txt"
+
+          while IFS= read -r ALIGNMENT; do
+            case "$ALIGNMENT" in
+              0x*) VALUE=$((16#${ALIGNMENT#0x})) ;;
+              *) echo "::error::Unrecognized ELF alignment: $ALIGNMENT"; exit 1 ;;
+            esac
+            if [ "$VALUE" -lt 16384 ]; then
+              echo "::error::ARM64 ELF LOAD segment alignment is below 16 KB: $ALIGNMENT"
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/ghi-page-size-check/alignments.txt"
+
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+          echo "Verified: both native ABIs have 16 KB ELF alignment and APK ZIP alignment."
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

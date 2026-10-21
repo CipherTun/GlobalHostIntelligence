@@ -31,6 +31,14 @@ fun SettingsScreen(
     var projectDiscoveryKey by remember(projectDiscoveryApiKey) { mutableStateOf(projectDiscoveryApiKey) }
     var saved by remember { mutableStateOf(false) }
     var reset by remember { mutableStateOf(false) }
+    val limitValue = limit.toIntOrNull()
+    val threadsValue = threads.toIntOrNull()
+    val parallelValue = parallel.toIntOrNull()
+    val timeoutValue = timeout.toIntOrNull()
+    val validNumbers = limitValue != null && limitValue in 10..5000 &&
+        threadsValue != null && threadsValue in 1..256 &&
+        parallelValue != null && parallelValue in 1..32 &&
+        timeoutValue != null && timeoutValue in 2..60
 
     GhiScreenScaffold("Settings") { modifier ->
         LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -38,10 +46,13 @@ fun SettingsScreen(
             item { GhiSectionHeader("Discovery engine", "Controls are applied to new discovery runs.") }
             item {
                 GhiCard { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NumberField(limit, { limit = it }, "Maximum validated hosts (10–5000)")
-                    NumberField(threads, { threads = it }, "Validation threads (1–256)")
-                    NumberField(parallel, { parallel = it }, "Parallel discovery sources (1–32)")
-                    NumberField(timeout, { timeout = it }, "Validation timeout seconds (2–60)")
+                    NumberField(limit, { limit = it }, "Maximum validated hosts (10–5000)", limitValue == null || limitValue !in 10..5000)
+                    NumberField(threads, { threads = it }, "Validation threads (1–256)", threadsValue == null || threadsValue !in 1..256)
+                    NumberField(parallel, { parallel = it }, "Parallel discovery sources (1–32)", parallelValue == null || parallelValue !in 1..32)
+                    NumberField(timeout, { timeout = it }, "Validation timeout seconds (2–60)", timeoutValue == null || timeoutValue !in 2..60)
+                    if (!validNumbers) {
+                        Text("Check the highlighted values. Settings cannot be saved until every number is within its allowed range.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                     OutlinedTextField(agent, { agent = it }, label = { Text("Validation User-Agent") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     OutlinedTextField(
                         projectDiscoveryKey,
@@ -56,7 +67,7 @@ fun SettingsScreen(
             item { GhiSectionHeader("Interface", "Only visual behavior; discovery and network capabilities are unchanged.") }
             item { GhiCard { Column { SwitchRow("Animations", animations) { animations = it }; SwitchRow("Compact result cards", compact) { compact = it } } } }
             item {
-                Button(onClick = { onSave(limit.toIntOrNull() ?: discoveryLimit, threads.toIntOrNull() ?: validationThreads, parallel.toIntOrNull() ?: sourceParallelism, timeout.toIntOrNull() ?: validationTimeout, agent, sources, animations, compact, projectDiscoveryKey.trim()); saved = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Icon(Icons.Filled.Save, null); Spacer(Modifier.width(8.dp)); Text("SAVE SETTINGS") }
+                Button(onClick = { if (validNumbers) { onSave(limitValue!!, threadsValue!!, parallelValue!!, timeoutValue!!, agent, sources, animations, compact, projectDiscoveryKey.trim()); saved = true } }, enabled = validNumbers, modifier = Modifier.fillMaxWidth().height(52.dp)) { Icon(Icons.Filled.Save, null); Spacer(Modifier.width(8.dp)); Text("SAVE SETTINGS") }
             }
             if (saved) item { Text("Settings saved and will be used by the next run.", color = GhiSignalGreen, style = MaterialTheme.typography.labelSmall) }
             item {
@@ -69,8 +80,15 @@ fun SettingsScreen(
             item { OutlinedButton(onClick = { reset = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Filled.Restore, null); Spacer(Modifier.width(8.dp)); Text("RESET TO DEFAULTS") } }
         }
     }
-    if (reset) AlertDialog(onDismissRequest = { reset = false }, title = { Text("Reset settings?") }, text = { Text("Restore the engine and interface to the default configuration.") }, confirmButton = { TextButton(onClick = { onReset(); reset = false }) { Text("RESET") } }, dismissButton = { TextButton(onClick = { reset = false }) { Text("CANCEL") } })
+    if (reset) AlertDialog(onDismissRequest = { reset = false }, title = { Text("Reset settings?") }, text = { Text("Restore the engine and interface to the default configuration.") }, confirmButton = { TextButton(onClick = {
+        onReset()
+        limit = "500"; threads = "32"; parallel = "8"; timeout = "8"
+        agent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36"
+        sources = linkedSetOf("urlscan","crt.sh","crt.name","ctlogs.dev","certspotter","rapiddns","anubis","subdomain.center","hackertarget","wayback","threatminer","commoncrawl","otx","subdomain.app","sonar","riddler","jldc","sublist3r","country","urlscan-country")
+        animations = true; compact = false; projectDiscoveryKey = ""; saved = false
+        reset = false
+    }) { Text("RESET") } }, dismissButton = { TextButton(onClick = { reset = false }) { Text("CANCEL") } })
 }
 
-@Composable private fun NumberField(value: String, onValue: (String) -> Unit, label: String) { OutlinedTextField(value, { onValue(it.filter(Char::isDigit).take(4)) }, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+@Composable private fun NumberField(value: String, onValue: (String) -> Unit, label: String, isError: Boolean) { OutlinedTextField(value, { onValue(it.filter(Char::isDigit).take(4)) }, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = true, isError = isError) }
 @Composable private fun SwitchRow(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text(label, Modifier.weight(1f)); Switch(checked, onChecked) } }
