@@ -8,6 +8,7 @@ object GhiRoute {
     const val TLS = "tls"
     const val DNS = "dns"
     const val CERTIFICATES = "certificates"
+    const val RDAP = "rdap"
     const val PAYLOADS = "payloads"
     const val EXPORT = "export"
     const val INVESTIGATION = "investigation"

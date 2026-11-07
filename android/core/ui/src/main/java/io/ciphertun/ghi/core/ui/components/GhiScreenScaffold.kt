@@ -8,9 +8,14 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import io.ciphertun.ghi.core.designsystem.GhiInk900
 
+/**
+ * Screen scaffold. Both the container and the app bar are transparent so the
+ * app-level [GhiBackdrop] shows through every screen (previously each screen
+ * painted an opaque background and hid it).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GhiScreenScaffold(
@@ -21,10 +26,16 @@ fun GhiScreenScaffold(
 ) {
     val openDrawer = LocalGhiOpenDrawer.current
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = GhiInk900, titleContentColor = MaterialTheme.colorScheme.onSurface),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
                 title = { Text(title, style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     when {
