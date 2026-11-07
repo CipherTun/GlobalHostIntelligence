@@ -3,7 +3,7 @@ name: Mobile Core Library (AAR)
 on:
   workflow_dispatch: {}
   push:
-    branches: [main, dev, no-ads-release,upgrade/ghi-5-ui-engine]
+    branches: [main, dev, no-ads-release, upgrade/ghi-5-ui-engine]
   pull_request:
     branches: [main, dev]
 
