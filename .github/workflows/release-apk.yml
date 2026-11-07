@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Mobile Core Library (AAR)"]
     types: [completed]
-    branches: [main]
+    branches: [main,upgrade/ghi-5-ui-engine]
 
 permissions:
   actions: read
