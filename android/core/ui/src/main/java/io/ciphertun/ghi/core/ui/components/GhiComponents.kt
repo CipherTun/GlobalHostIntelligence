@@ -21,45 +21,59 @@ import androidx.compose.ui.unit.dp
 import io.ciphertun.ghi.core.designsystem.*
 import kotlinx.coroutines.delay
 
-private val glassShape = RoundedCornerShape(18.dp)
+/** Corner radius of glass surfaces, driven by the user's style. */
+@Composable
+private fun glassShape(extra: Int = 0): RoundedCornerShape =
+    RoundedCornerShape((LocalGhiStyle.current.corners.radius + extra).coerceAtLeast(6).dp)
+
+@Composable
+private fun glassColor(): Color =
+    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = LocalGhiStyle.current.glass)
 
 @Composable
 fun GhiCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier,
-        shape = glassShape,
-        colors = CardDefaults.cardColors(containerColor = GhiInk800.copy(alpha = .72f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, GhiSlate500.copy(alpha = .22f)),
+        shape = glassShape(),
+        colors = CardDefaults.cardColors(containerColor = glassColor()),
+        border = ghiGlassBorder(),
         content = content
     )
 }
 
 @Composable
 fun GhiHero(title: String, subtitle: String, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "ghi-hero-glow")
-    val alpha by transition.animateFloat(
-        initialValue = 0.30f,
-        targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse),
-        label = "ghi-hero-alpha"
-    )
+    val style = LocalGhiStyle.current
+    val scheme = MaterialTheme.colorScheme
+    val alpha = if (style.animations) {
+        val transition = rememberInfiniteTransition(label = "ghi-hero-glow")
+        val animated by transition.animateFloat(
+            initialValue = 0.20f,
+            targetValue = 0.38f,
+            animationSpec = infiniteRepeatable(tween(2600), RepeatMode.Reverse),
+            label = "ghi-hero-alpha"
+        )
+        animated
+    } else {
+        0.28f
+    }
     GhiCard(modifier.fillMaxWidth()) {
         Box(
             Modifier.fillMaxWidth()
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            GhiNavy700.copy(alpha = alpha),
-                            GhiInk800.copy(alpha = 0.48f),
-                            GhiAccentCyan.copy(alpha = 0.08f)
+                            scheme.primary.copy(alpha = alpha),
+                            scheme.surfaceVariant.copy(alpha = 0.30f),
+                            scheme.tertiary.copy(alpha = 0.10f)
                         )
                     )
                 )
-                .padding(18.dp)
+                .padding((18 * style.density.scale).dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = GhiSlate300)
+                Text(subtitle, color = scheme.onSurfaceVariant)
             }
         }
     }
@@ -77,10 +91,11 @@ fun GhiSectionHeader(title: String, subtitle: String? = null, modifier: Modifier
 
 @Composable
 fun GhiMetric(label: String, value: String, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+    val density = LocalGhiStyle.current.density.scale
     GhiCard(modifier) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding((14 * density).dp), verticalAlignment = Alignment.CenterVertically) {
             icon?.let {
-                Icon(it, null, tint = GhiAccentBlue, modifier = Modifier.size(20.dp))
+                Icon(it, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(9.dp))
             }
             Column(Modifier.weight(1f)) {
@@ -99,8 +114,8 @@ fun GhiStatusPill(text: String, tone: StatusTone = StatusTone.NEUTRAL) {
         StatusTone.OK -> GhiSignalGreen
         StatusTone.WARN -> GhiSignalAmber
         StatusTone.ERROR -> GhiSignalRed
-        StatusTone.INFO -> GhiAccentBlue
-        StatusTone.NEUTRAL -> GhiSlate300
+        StatusTone.INFO -> MaterialTheme.colorScheme.primary
+        StatusTone.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Surface(color = color.copy(alpha = .15f), shape = RoundedCornerShape(50)) {
         Row(
@@ -128,7 +143,7 @@ fun GhiSearchField(
         singleLine = true,
         label = { Text(label) },
         leadingIcon = { Icon(Icons.Filled.Search, null) },
-        shape = RoundedCornerShape(14.dp)
+        shape = glassShape(-4)
     )
 }
 
@@ -140,23 +155,24 @@ fun GhiActionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalGhiStyle.current.density.scale
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = GhiInk800.copy(alpha = .72f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, GhiSlate500.copy(alpha = .18f))
+        shape = glassShape(-2),
+        colors = CardDefaults.cardColors(containerColor = glassColor()),
+        border = ghiGlassBorder()
     ) {
-        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(color = GhiNavy700.copy(alpha = .45f), shape = RoundedCornerShape(12.dp)) {
-                Icon(icon, null, tint = GhiAccentBlue, modifier = Modifier.padding(10.dp).size(22.dp))
+        Row(Modifier.padding((15 * density).dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = .16f), shape = glassShape(-6)) {
+                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(10.dp).size(22.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.SemiBold)
                 Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            Icon(Icons.Filled.ChevronRight, null, tint = GhiSlate500)
+            Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -174,7 +190,7 @@ fun GhiEmptyState(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(icon, null, tint = GhiSlate500, modifier = Modifier.size(38.dp))
+            Icon(icon, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(38.dp))
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
@@ -184,10 +200,10 @@ fun GhiEmptyState(
 /**
  * Gemini-inspired thinking state, implemented locally.
  *
- * The spark sweeps through the full HSV hue spectrum. A new contextual
- * micro-message is selected from the supplied hint every ~1.8s. Messages
- * are intentionally short, thin and low-contrast so they communicate work
- * without becoming a second result panel.
+ * The spark drifts through the hue spectrum (one full turn every ~3 s; it was
+ * 0.4 s before, which strobed). A new contextual micro-message is selected from
+ * the supplied hint every ~1.8 s. When animations are turned off in Settings the
+ * spark stays static.
  */
 @Composable
 fun GhiBusyIndicator(
@@ -195,6 +211,7 @@ fun GhiBusyIndicator(
     hint: String = "network",
     modifier: Modifier = Modifier
 ) {
+    val animate = LocalGhiStyle.current.animations
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(),
@@ -206,16 +223,16 @@ fun GhiBusyIndicator(
             initialValue = 0f,
             targetValue = 360f,
             animationSpec = infiniteRepeatable(
-                animation = tween(400, easing = LinearEasing),
+                animation = tween(3000, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             ),
             label = "ghi-spectrum"
         )
         val pulse by transition.animateFloat(
-            initialValue = .86f,
-            targetValue = 1.06f,
+            initialValue = .9f,
+            targetValue = 1.05f,
             animationSpec = infiniteRepeatable(
-                animation = tween(800, easing = FastOutSlowInEasing),
+                animation = tween(900, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "ghi-spark-pulse"
@@ -228,7 +245,6 @@ fun GhiBusyIndicator(
                 sparkVisible = false
                 return@LaunchedEffect
             }
-            // The quiet context message appears first; the animated spark follows.
             sparkVisible = false
             delay(420)
             sparkVisible = true
@@ -240,7 +256,7 @@ fun GhiBusyIndicator(
 
         val messages = thinkingMessages(hint)
         val message = messages[messageIndex % messages.size]
-        val sparkColor = Color.hsv(hue, .82f, 1f, .95f)
+        val sparkColor = if (animate) Color.hsv(hue, .72f, 1f, .95f) else MaterialTheme.colorScheme.primary
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
@@ -251,13 +267,13 @@ fun GhiBusyIndicator(
                     Icons.Filled.AutoAwesome,
                     contentDescription = "Working",
                     tint = sparkColor,
-                    modifier = Modifier.size(23.dp * pulse)
+                    modifier = Modifier.size(if (animate) 23.dp * pulse else 23.dp)
                 )
                 Spacer(Modifier.width(9.dp))
             }
             Text(
                 message,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .48f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Light,
                 maxLines = 1
@@ -289,6 +305,12 @@ private fun thinkingMessages(hint: String): List<String> {
             "Comparing protocol signals…",
             "Mapping the security details…",
             "Preparing the clearest result…"
+        )
+        "rdap" in key || "whois" in key -> listOf(
+            "Asking the registry…",
+            "Reading registration records…",
+            "Mapping owners and contacts…",
+            "Preparing the registration view…"
         )
         "payload" in key || "request" in key -> listOf(
             "Building the HTTP request…",

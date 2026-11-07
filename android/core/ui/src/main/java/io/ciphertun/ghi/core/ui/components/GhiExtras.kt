@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,26 +37,29 @@ fun GhiBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.() 
     val style = LocalGhiStyle.current
     val scheme = MaterialTheme.colorScheme
     val accent = scheme.primary
+    val tertiary = scheme.tertiary
     val glow = if (style.backdrop) {
         Modifier.drawBehind {
             val radius = size.minDimension * .9f
+            val topRight = Offset(size.width * .90f, size.height * .04f)
+            val bottomLeft = Offset(size.width * .05f, size.height * .92f)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(accent.copy(alpha = .20f), Color.Transparent),
-                    center = Offset(size.width * .90f, size.height * .04f),
+                    center = topRight,
                     radius = radius,
                 ),
                 radius = radius,
-                center = Offset(size.width * .90f, size.height * .04f),
+                center = topRight,
             )
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(scheme.tertiary.copy(alpha = .10f), Color.Transparent),
-                    center = Offset(size.width * .05f, size.height * .92f),
+                    colors = listOf(tertiary.copy(alpha = .10f), Color.Transparent),
+                    center = bottomLeft,
                     radius = radius,
                 ),
                 radius = radius,
-                center = Offset(size.width * .05f, size.height * .92f),
+                center = bottomLeft,
             )
         }
     } else {
@@ -76,14 +80,18 @@ fun GhiChip(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
 ) {
-    val radius = LocalGhiStyle.current.corners.radius.dp
+    val radius = minOf(LocalGhiStyle.current.corners.radius, 16)
     FilterChip(
         selected = selected,
         onClick = onClick,
         modifier = modifier,
-        shape = RoundedCornerShape(radius.coerceAtMost(16.dp)),
+        shape = RoundedCornerShape(radius.dp),
         label = { Text(label, maxLines = 1) },
-        leadingIcon = icon?.let { vector -> { Icon(vector, null, Modifier.size(16.dp)) } },
+        leadingIcon = if (icon != null) {
+            { Icon(icon, null, Modifier.size(16.dp)) }
+        } else {
+            null
+        },
     )
 }
 
@@ -91,14 +99,12 @@ fun GhiChip(
 @Composable
 fun GhiStatRow(stats: List<Pair<String, String>>, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        stats.forEach { (label, value) ->
+        for (stat in stats) {
             GhiCard(Modifier.weight(1f)) {
-                androidx.compose.foundation.layout.Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    Text(value, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text(stat.second, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                     Text(
-                        label,
+                        stat.first,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
