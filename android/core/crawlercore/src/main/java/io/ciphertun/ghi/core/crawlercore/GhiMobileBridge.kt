@@ -51,6 +51,8 @@ object GhiMobileBridge {
     fun analyzeTls(host: String) = invoke("analyzeTLS", host)
     fun inspectDns(host: String) = invoke("inspectDNS", host)
     fun searchCertificates(domain: String) = invoke("searchCertificates", domain)
+    /** gomobile lower-cases the leading acronym run, so Go's RDAPLookup is rdapLookup. */
+    fun rdapLookup(target: String) = invoke("rdapLookup", target)
     fun investigate(target: String, timeoutSeconds: Int = 10) = invoke("investigate", target, timeoutSeconds)
     fun securityHeaders(target: String, timeoutSeconds: Int = 10) = invoke("securityHeaders", target, timeoutSeconds)
     fun redirectMap(target: String, timeoutSeconds: Int = 10) = invoke("redirectMap", target, timeoutSeconds)
