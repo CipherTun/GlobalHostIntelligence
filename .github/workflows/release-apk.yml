@@ -1,15 +1,9 @@
 name: GHI Release APK - Fresh No R8
 on:
-  workflow_dispatch: {}
-  push:
-    branches: [main, dev, no-ads-release, upgrade/ghi-5-ui-engine]
-  pull_request:
-    branches: [main, dev]
   workflow_run:
     workflows: ["Mobile Core Library (AAR)"]
     types: [completed]
-    branches: [main, upgrade/ghi-5-ui-engine]
-
+    branches: [main, upgrade/ghi-5-ui-engine
 
 permissions:
   actions: read
