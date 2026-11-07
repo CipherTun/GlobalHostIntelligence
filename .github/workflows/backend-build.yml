@@ -3,7 +3,7 @@ name: Backend Build & Test
 on:
   workflow_dispatch: {}
   push:
-    branches: [main, dev,upgrade/ghi-5-ui-engine]
+    branches: [main, dev, upgrade/ghi-5-ui-engine]
   pull_request:
     branches: [main, dev]
 
