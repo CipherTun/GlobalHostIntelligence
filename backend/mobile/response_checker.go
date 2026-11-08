@@ -205,6 +205,9 @@ func doHTTPCheck(target, proxyText, method, path, headersText, body string, foll
 	if ips, e := net.LookupHost(u.Hostname()); e == nil {
 		r.Addresses = ips
 	}
+	if r.CDN == "" {
+		r.CDN = cdnFromAddresses(r.Addresses)
+	}
 	limited := io.LimitReader(resp.Body, 256<<10)
 	data, readErr := io.ReadAll(limited)
 	if readErr != nil {
@@ -860,26 +863,16 @@ func stripTags(s string) string {
 	return strings.Join(strings.Fields(out.String()), " ")
 }
 
+// fingerprintTechnologies names the technologies detected in a response using
+// the shared Wappalyzer-backed engine (see detectTechnologies).
 func fingerprintTechnologies(h http.Header, body string) []string {
-	var out []string
-	l := strings.ToLower(body)
-	server := strings.ToLower(h.Get("Server"))
-	powered := strings.ToLower(h.Get("X-Powered-By"))
-	checks := []struct{ name, token string }{
-		{"Cloudflare", "cf-ray"}, {"nginx", "nginx"}, {"Apache", "apache"},
-		{"PHP", "php"}, {"WordPress", "wp-content"}, {"WordPress", "wordpress"},
-		{"Next.js", "__next"}, {"React", "react"}, {"Vue", "vue"},
-		{"Laravel", "laravel"}, {"ASP.NET", "asp.net"}, {"Express", "express"},
+	found, err := detectTechnologies(h, []byte(body))
+	if err != nil {
+		return nil
 	}
-	for _, c := range checks {
-		if strings.Contains(server, strings.ToLower(c.name)) || strings.Contains(paidHeaderValue(h), c.token) || strings.Contains(l, c.token) {
-			if !containsString(out, c.name) {
-				out = append(out, c.name)
-			}
-		}
-	}
-	if powered != "" && !containsString(out, powered) {
-		out = append(out, powered)
+	out := make([]string, 0, len(found))
+	for _, t := range found {
+		out = append(out, t.Name)
 	}
 	return out
 }
