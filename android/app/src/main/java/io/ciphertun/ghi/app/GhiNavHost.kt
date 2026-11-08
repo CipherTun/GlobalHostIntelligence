@@ -11,12 +11,16 @@ import io.ciphertun.ghi.core.ui.navigation.GhiRoute
 fun GhiNavHost(navController: NavHostController = rememberNavController()) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val activity = context as? android.app.Activity
-    val session = remember(context) { GhiSession(context.applicationContext) }
+    // Process-wide singleton: discovery survives rotation and theme changes.
+    val session = remember(context) { GhiSession.get(context.applicationContext) }
     val liveResults by session.liveResults.collectAsState()
     val discoveredResults by session.discoveredResults.collectAsState()
     val status by session.status.collectAsState()
     val error by session.error.collectAsState()
     val elapsed by session.elapsedMs.collectAsState()
+    val progress by session.progress.collectAsState()
+    val engine by session.engine.collectAsState()
+    val style by session.style.collectAsState()
 
     NavHost(navController, startDestination = GhiRoute.DISCOVER) {
         composable(GhiRoute.DISCOVER) {
@@ -27,10 +31,12 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
                 status = status,
                 error = error,
                 elapsedMs = elapsed,
-                enabledSources = session.enabledSources(),
+                enabledSources = engine.enabledSources,
                 onStart = { q, m -> session.startDiscovery(q, m) },
                 onStop = session::stopDiscovery,
-                onAnalyze = session::analyze
+                onAnalyze = session::analyze,
+                progress = progress,
+                acceptAnyResponse = engine.acceptAnyResponse
             )
         }
         composable(GhiRoute.SUBDOMAINS) { SubdomainsScreen(session::discoverSubdomains) }
@@ -39,6 +45,7 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
         composable(GhiRoute.TLS) { TlsAnalyzerScreen(session::analyzeTls) }
         composable(GhiRoute.DNS) { DnsInspectorScreen(session::inspectDns) }
         composable(GhiRoute.CERTIFICATES) { CertificateSearchScreen(session::searchCertificates) }
+        composable(GhiRoute.RDAP) { RdapScreen(session::rdap) }
         composable(GhiRoute.PAYLOADS) { PayloadGeneratorScreen() }
         composable(GhiRoute.EXPORT) { ExportScreen(liveResults, session::exportResults) }
         composable(GhiRoute.INVESTIGATION) { GhiInvestigationScreen(session::investigate) }
@@ -47,12 +54,11 @@ fun GhiNavHost(navController: NavHostController = rememberNavController()) {
         composable(GhiRoute.SOURCES) { DiscoverySourcesScreen(session.enabledSources(), session::saveSources) }
         composable(GhiRoute.SETTINGS) {
             SettingsScreen(
-                session.discoveryLimit(), session.validationThreads(), session.sourceParallelism(),
-                session.validationTimeout(), session.userAgent(), session.enabledSources(),
-                session.animationsEnabled(), session.compactResults(), session.projectDiscoveryApiKey(),
-                { limit, threads, parallel, timeout, agent, sources, animations, compact, projectDiscoveryKey ->
-                    session.saveSettings(limit, threads, parallel, timeout, agent, sources, animations, compact, projectDiscoveryKey)
-                }, session::resetSettings,
+                engine = engine,
+                style = style,
+                onEngineSave = session::saveEngine,
+                onStyleChange = session::setStyle,
+                onResetEngine = session::resetSettings,
                 onPrivacyOptions = { if (activity != null) GhiAdManager.showPrivacyOptions(activity) }
             )
         }

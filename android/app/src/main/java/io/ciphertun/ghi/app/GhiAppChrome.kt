@@ -21,7 +21,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.ciphertun.ghi.R
-import io.ciphertun.ghi.core.designsystem.*
+import io.ciphertun.ghi.core.designsystem.LocalGhiStyle
+import io.ciphertun.ghi.core.ui.components.GhiBackdrop
 import io.ciphertun.ghi.core.ui.components.LocalGhiOpenDrawer
 import io.ciphertun.ghi.core.ui.navigation.GhiRoute
 import kotlinx.coroutines.delay
@@ -34,26 +35,59 @@ private data class NavItem(
     val icon: ImageVector
 )
 
-private val toolLevel = listOf(
+private data class NavGroup(val title: String, val items: List<NavItem>)
+
+/**
+ * The drawer used to omit TLS, DNS, Certificates, Export and Sources even
+ * though their routes existed, which left those tools unreachable.
+ */
+private val navGroups = listOf(
+    NavGroup(
+        "DISCOVER",
+        listOf(
+            NavItem(GhiRoute.DISCOVER, "Discovery", Icons.Filled.Explore),
+            NavItem(GhiRoute.SUBDOMAINS, "Subdomains", Icons.Filled.Dns),
+            NavItem(GhiRoute.SOURCES, "Sources", Icons.Filled.Tune),
+        )
+    ),
+    NavGroup(
+        "PROBE",
+        listOf(
+            NavItem(GhiRoute.RESPONSE, "Response Checker", Icons.Filled.Language),
+            NavItem(GhiRoute.PAYLOADS, "Payload Generator", Icons.Filled.Bolt),
+        )
+    ),
+    NavGroup(
+        "ANALYZE",
+        listOf(
+            NavItem(GhiRoute.IP_TOOLS, "IP / Domain", Icons.Filled.Public),
+            NavItem(GhiRoute.RDAP, "Registration (RDAP)", Icons.Filled.Badge),
+            NavItem(GhiRoute.TLS, "TLS Analyzer", Icons.Filled.Lock),
+            NavItem(GhiRoute.DNS, "DNS Inspector", Icons.Filled.Storage),
+            NavItem(GhiRoute.CERTIFICATES, "Certificates", Icons.Filled.VerifiedUser),
+            NavItem(GhiRoute.WEB_SURFACE, "Web Surface", Icons.Filled.Web),
+            NavItem(GhiRoute.INVESTIGATION, "Investigation", Icons.Filled.Security),
+        )
+    ),
+    NavGroup(
+        "ASSIST",
+        listOf(NavItem(GhiRoute.AGENT, "GHI Agent", Icons.Filled.AutoAwesome))
+    ),
+    NavGroup(
+        "DATA",
+        listOf(
+            NavItem(GhiRoute.EXPORT, "Export", Icons.Filled.FileDownload),
+            NavItem(GhiRoute.SETTINGS, "Settings", Icons.Filled.Settings),
+        )
+    ),
+)
+
+private val bottomLevel = listOf(
     NavItem(GhiRoute.DISCOVER, "Discovery", Icons.Filled.Explore),
     NavItem(GhiRoute.SUBDOMAINS, "Subdomains", Icons.Filled.Dns),
     NavItem(GhiRoute.RESPONSE, "Response Checker", Icons.Filled.Language),
     NavItem(GhiRoute.IP_TOOLS, "IP / Domain", Icons.Filled.Public),
-    NavItem(GhiRoute.PAYLOADS, "Payload Generator", Icons.Filled.Bolt),
-    NavItem(GhiRoute.INVESTIGATION, "Investigation", Icons.Filled.Security),
-    NavItem(GhiRoute.WEB_SURFACE, "Web Surface", Icons.Filled.Language),
-    NavItem(GhiRoute.AGENT, "GHI Agent", Icons.Filled.AutoAwesome),
-    NavItem(GhiRoute.SETTINGS, "Settings", Icons.Filled.Settings)
 )
-
-private val bottomLevel = listOf(
-    GhiRoute.DISCOVER,
-    GhiRoute.SUBDOMAINS,
-    GhiRoute.RESPONSE,
-    GhiRoute.IP_TOOLS
-).mapNotNull { route ->
-    toolLevel.firstOrNull { it.route == route }
-}
 
 @Composable
 fun GhiAppChrome(
@@ -62,6 +96,8 @@ fun GhiAppChrome(
 ) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
+    val style = LocalGhiStyle.current
 
     val current by
         navController.currentBackStackEntryAsState()
@@ -148,7 +184,7 @@ fun GhiAppChrome(
         drawerState = drawer,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = GhiInk950,
+                drawerContainerColor = scheme.background,
                 modifier = Modifier.fillMaxWidth(.88f)
             ) {
                 Column(
@@ -160,8 +196,8 @@ fun GhiAppChrome(
                             .background(
                                 Brush.linearGradient(
                                     listOf(
-                                        GhiNavy700,
-                                        GhiInk900
+                                        scheme.primary.copy(alpha = .30f),
+                                        scheme.surface
                                     )
                                 )
                             )
@@ -195,16 +231,14 @@ fun GhiAppChrome(
 
                                 Text(
                                     "INTELLIGENCE",
-                                    color =
-                                        GhiAccentBlue,
+                                    color = scheme.primary,
                                     fontWeight =
                                         FontWeight.ExtraBold
                                 )
 
                                 Text(
                                     "NETWORK INTELLIGENCE",
-                                    color =
-                                        GhiAccentCyan,
+                                    color = scheme.secondary,
                                     style =
                                         MaterialTheme
                                             .typography
@@ -217,43 +251,50 @@ fun GhiAppChrome(
                     LazyColumn(
                         Modifier
                             .weight(1f)
-                            .padding(10.dp)
+                            .padding(horizontal = 10.dp)
                     ) {
-                        item {
-                            Text(
-                                "TOOLS",
-                                Modifier.padding(12.dp),
-                                color = GhiSlate500,
-                                style =
-                                    MaterialTheme
-                                        .typography
-                                        .labelSmall
-                            )
-                        }
-
-                        toolLevel.forEach { navItem ->
+                        navGroups.forEach { group ->
                             item {
-                                NavigationDrawerItem(
-                                    label = {
-                                        Text(navItem.label)
-                                    },
-                                    selected =
-                                        route ==
-                                            navItem.route,
-                                    onClick = {
-                                        go(navItem.route)
-                                    },
-                                    icon = {
-                                        Icon(
-                                            navItem.icon,
-                                            null
-                                        )
-                                    },
-                                    modifier =
-                                        Modifier.padding(
-                                            vertical = 2.dp
-                                        )
+                                Text(
+                                    group.title,
+                                    Modifier.padding(start = 12.dp, top = 14.dp, bottom = 4.dp),
+                                    color = scheme.outline,
+                                    style =
+                                        MaterialTheme
+                                            .typography
+                                            .labelSmall
                                 )
+                            }
+                            group.items.forEach { navItem ->
+                                item {
+                                    NavigationDrawerItem(
+                                        label = {
+                                            Text(navItem.label)
+                                        },
+                                        selected =
+                                            route ==
+                                                navItem.route,
+                                        onClick = {
+                                            go(navItem.route)
+                                        },
+                                        icon = {
+                                            Icon(
+                                                navItem.icon,
+                                                null
+                                            )
+                                        },
+                                        colors = NavigationDrawerItemDefaults.colors(
+                                            selectedContainerColor = scheme.primary.copy(alpha = .18f),
+                                            selectedIconColor = scheme.primary,
+                                            selectedTextColor = scheme.primary,
+                                            unselectedContainerColor = androidx.compose.ui.graphics.Color.Transparent
+                                        ),
+                                        modifier =
+                                            Modifier.padding(
+                                                vertical = 1.dp
+                                            )
+                                    )
+                                }
                             }
                         }
                     }
@@ -269,7 +310,7 @@ fun GhiAppChrome(
             }
         ) {
             Scaffold(
-                containerColor = GhiInk950,
+                containerColor = scheme.background,
 
                 bottomBar = {
                     Column {
@@ -293,7 +334,7 @@ fun GhiAppChrome(
                         }
 
                         NavigationBar(
-                            containerColor = GhiInk900,
+                            containerColor = scheme.surface.copy(alpha = (style.glass + .2f).coerceAtMost(.97f)),
                             tonalElevation = 0.dp
                         ) {
                             bottomLevel.forEach { item ->
@@ -315,34 +356,24 @@ fun GhiAppChrome(
                                             item.label,
                                             maxLines = 1
                                         )
-                                    }
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = scheme.primary,
+                                        selectedTextColor = scheme.primary,
+                                        indicatorColor = scheme.primary.copy(alpha = .22f)
+                                    )
                                 )
                             }
                         }
                     }
                 }
             ) { padding ->
-                Box(
+                // Every screen scaffold is transparent, so this backdrop is what you see.
+                GhiBackdrop(
                     Modifier
                         .fillMaxSize()
                         .padding(padding)
                 ) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                            .background(
-                                Brush.radialGradient(
-                                    listOf(
-                                        GhiNavy700.copy(
-                                            alpha = .30f
-                                        ),
-                                        GhiInk950
-                                    )
-                                )
-                            )
-                    )
-
                     GhiNavHost(navController)
                 }
             }
