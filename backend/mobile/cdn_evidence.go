@@ -1,9 +1,38 @@
 package mobile
 
 import (
+	"net"
 	"net/http"
 	"strings"
+	"sync"
+
+	"github.com/projectdiscovery/cdncheck"
 )
+
+var (
+	cdnCheckOnce   sync.Once
+	cdnCheckClient *cdncheck.Client
+)
+
+// cdnFromAddresses classifies resolved IPs against the CDN and WAF ranges that
+// ProjectDiscovery's cdncheck embeds. It needs no network access and is only a
+// fallback for when response headers do not identify a provider.
+func cdnFromAddresses(addresses []string) string {
+	cdnCheckOnce.Do(func() { cdnCheckClient = cdncheck.New() })
+	for _, raw := range addresses {
+		ip := net.ParseIP(raw)
+		if ip == nil {
+			continue
+		}
+		if ok, name, err := cdnCheckClient.CheckCDN(ip); err == nil && ok {
+			return name + " (IP range)"
+		}
+		if ok, name, err := cdnCheckClient.CheckWAF(ip); err == nil && ok {
+			return name + " (IP range)"
+		}
+	}
+	return ""
+}
 
 // detectCDNEvidence uses multiple observable indicators. It intentionally
 // reports unknown instead of guessing when evidence is insufficient.

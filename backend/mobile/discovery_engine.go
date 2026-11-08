@@ -129,7 +129,9 @@ func DiscoverSubdomains(domain string, maxResults int) string {
 		return mustJSON(map[string]any{"domain": domain, "subdomains": []string{}, "error": "invalid domain"})
 	}
 	client := &http.Client{Timeout: 8 * time.Second}
-	names := []string{"crt.sh", "crt.name", "ctlogs.dev", "certspotter", "rapiddns", "anubis", "subdomain.center", "hackertarget", "wayback", "threatminer", "commoncrawl", "otx", "subdomain.app", "sonar", "riddler", "jldc", "sublist3r", "urlscan"}
+	// sonar.omnisint.io (Rapid7 Project Sonar) was shut down in 2022, so it is no
+	// longer part of the default fan-out. discoverRaw still accepts it by name.
+	names := []string{"crt.sh", "crt.name", "ctlogs.dev", "certspotter", "rapiddns", "anubis", "subdomain.center", "hackertarget", "wayback", "threatminer", "commoncrawl", "otx", "subdomain.app", "riddler", "jldc", "sublist3r", "urlscan"}
 	type result struct {
 		name    string
 		domains []string
