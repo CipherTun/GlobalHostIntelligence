@@ -9,8 +9,12 @@ import (
 	"net/http/httptrace"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	wappalyzer "github.com/projectdiscovery/wappalyzergo"
 )
 
 // Investigation runs the real GHI engines concurrently. It is intentionally
@@ -277,6 +281,41 @@ func NetworkTiming(target string, timeoutSeconds int) string {
 	return mustJSON(result)
 }
 
+var (
+	wappalyzerOnce   sync.Once
+	wappalyzerClient *wappalyzer.Wappalyze
+	wappalyzerErr    error
+)
+
+type detectedTechnology struct {
+	Name       string   `json:"name"`
+	Evidence   string   `json:"evidence"`
+	Categories []string `json:"categories,omitempty"`
+	Website    string   `json:"website,omitempty"`
+}
+
+// detectTechnologies fingerprints an HTTP response with the Wappalyzer rule set
+// embedded in ProjectDiscovery's wappalyzergo. The client is built lazily and
+// once, because compiling the rule set is the expensive part on a phone.
+func detectTechnologies(h http.Header, body []byte) ([]detectedTechnology, error) {
+	wappalyzerOnce.Do(func() { wappalyzerClient, wappalyzerErr = wappalyzer.New() })
+	if wappalyzerErr != nil {
+		return nil, wappalyzerErr
+	}
+	info := wappalyzerClient.FingerprintWithInfo(h, body)
+	out := make([]detectedTechnology, 0, len(info))
+	for name, app := range info {
+		out = append(out, detectedTechnology{
+			Name:       name,
+			Evidence:   "Wappalyzer fingerprint (headers/body)",
+			Categories: app.Categories,
+			Website:    app.Website,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 func TechnologyFingerprint(target string, timeoutSeconds int) string {
 	host := normalizeDomain(target)
 	if host == "" {
@@ -304,52 +343,16 @@ func TechnologyFingerprint(target string, timeoutSeconds int) string {
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	lower := strings.ToLower(string(body))
-	server := strings.ToLower(resp.Header.Get("Server"))
-	powered := strings.ToLower(resp.Header.Get("X-Powered-By"))
-	all := server + " " + powered + " " + lower
-
-	type tech struct {
-		Name     string `json:"name"`
-		Evidence string `json:"evidence"`
-	}
-	found := make([]tech, 0, 12)
-	seen := map[string]bool{}
-	add := func(name, evidence string) {
-		if !seen[name] {
-			seen[name] = true
-			found = append(found, tech{Name: name, Evidence: evidence})
-		}
+	found, err := detectTechnologies(resp.Header, body)
+	if err != nil {
+		return mustJSON(map[string]any{"ok": false, "host": host, "error": "technology engine unavailable: " + err.Error()})
 	}
 
-	signatures := []struct {
-		token, name, evidence string
-	}{
-		{"cf-ray", "Cloudflare", "CF-RAY header"},
-		{"cf-cache-status", "Cloudflare", "CF-Cache-Status header"},
-		{"x-amz-cf-", "Amazon CloudFront", "Amazon CDN header"},
-		{"x-cache: ", "HTTP cache", "X-Cache header"},
-		{"nginx", "nginx", "Server header"},
-		{"apache", "Apache HTTP Server", "Server header"},
-		{"caddy", "Caddy", "Server header"},
-		{"envoy", "Envoy", "Server header"},
-		{"x-powered-by: express", "Express", "X-Powered-By header"},
-		{"next.js", "Next.js", "HTML marker"},
-		{"/_next/static/", "Next.js", "HTML asset path"},
-		{"wp-content", "WordPress", "HTML asset path"},
-		{"drupal-settings-json", "Drupal", "HTML marker"},
-		{"laravel_session", "Laravel", "Cookie marker"},
-		{"react", "React", "HTML marker"},
-		{"vue", "Vue.js", "HTML marker"},
-		{"ng-version", "Angular", "HTML marker"},
-	}
-	for _, sig := range signatures {
-		if strings.Contains(all, sig.token) {
-			add(sig.name, sig.evidence)
+	cdn := detectCDN(resp.Header)
+	if cdn == "" {
+		if addrs, e := net.LookupHost(host); e == nil {
+			cdn = cdnFromAddresses(addrs)
 		}
-	}
-	if cdn := detectCDN(resp.Header); cdn != "" {
-		add(cdn, "CDN response headers")
 	}
 
 	return mustJSON(map[string]any{
@@ -359,7 +362,7 @@ func TechnologyFingerprint(target string, timeoutSeconds int) string {
 		"server":       resp.Header.Get("Server"),
 		"powered_by":   resp.Header.Get("X-Powered-By"),
 		"content_type": resp.Header.Get("Content-Type"),
-		"cdn":          detectCDN(resp.Header),
+		"cdn":          cdn,
 		"technologies": found,
 		"elapsed_ms":   time.Since(start).Milliseconds(),
 	})
