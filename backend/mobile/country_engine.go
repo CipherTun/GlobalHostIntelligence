@@ -8,22 +8,28 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // DiscoverCountryWorld is a resilient worldwide country discovery fan-out.
 // It separates candidate collection from live validation and records individual
 // source failures instead of failing the complete run.
+//
+// Engine notes (this replaced a per-apex sequential loop):
+//   - the apex x source expansion is a flat task list served by a pool of 24
+//     workers instead of 8 apexes that each walked 17 sources one after another,
+//   - a source that fails 3 times without ever succeeding is skipped for the
+//     rest of the run (circuit breaker), so a blocked API no longer burns a
+//     12 second timeout per apex,
+//   - both stages have a wall-clock budget, so one slow API cannot hold the run,
+//   - the candidate cap follows the app's limit (it was silently capped at 500).
 func DiscoverCountryWorld(country string, maxResults int, providerConfigJSON string) string {
 	country = strings.ToLower(strings.TrimSpace(country))
 	if !isCountryCode(country) {
 		return mustJSON(map[string]any{"country": country, "domains": []string{}, "sources": []string{}, "errors": map[string]string{"country": "country must be ISO-3166 alpha-2"}})
 	}
-	if maxResults < 1 {
-		maxResults = 500
-	}
-	if maxResults > 500 {
-		maxResults = 500
-	}
+	maxResults = clampDiscoveryLimit(maxResults)
 
 	cfg := struct{ Censys, Netlas, Shodan string }{}
 	_ = json.Unmarshal([]byte(providerConfigJSON), &cfg)
@@ -35,10 +41,10 @@ func DiscoverCountryWorld(country string, maxResults int, providerConfigJSON str
 		err     error
 	}
 	results := make(chan result, 16)
-	var wg sync.WaitGroup
+	started := 0
 	run := func(name string, fn func() ([]string, error)) {
-		wg.Add(1)
-		go func() { defer wg.Done(); d, e := fn(); results <- result{name, d, e} }()
+		started++
+		go func() { d, e := fn(); results <- result{name, d, e} }()
 	}
 
 	// Independent country-level sources. URLScan is only one leg.
@@ -57,21 +63,28 @@ func DiscoverCountryWorld(country string, maxResults int, providerConfigJSON str
 		run("shodan", func() ([]string, error) { return shodanCountry(client, country, cfg.Shodan, maxResults) })
 	}
 
-	go func() { wg.Wait(); close(results) }()
-
 	combined := make([]string, 0, maxResults*3)
 	errors := map[string]string{}
 	counts := map[string]int{}
 	sources := []string{}
-	for r := range results {
-		sources = append(sources, r.name)
-		if r.err != nil {
-			errors[r.name] = r.err.Error()
-			continue
+	stageOne := time.NewTimer(40 * time.Second)
+collect:
+	for pending := started; pending > 0; pending-- {
+		select {
+		case r := <-results:
+			sources = append(sources, r.name)
+			if r.err != nil {
+				errors[r.name] = r.err.Error()
+				continue
+			}
+			counts[r.name] = len(r.domains)
+			combined = append(combined, r.domains...)
+		case <-stageOne.C:
+			errors["timeout"] = "some country sources were still running after 40s and were skipped"
+			break collect
 		}
-		counts[r.name] = len(r.domains)
-		combined = append(combined, r.domains...)
 	}
+	stageOne.Stop()
 
 	// Expand observed apexes through independent passive datasets. This is a
 	// second stage, not a URLScan dependency, and never invents hostnames.
@@ -88,38 +101,60 @@ func DiscoverCountryWorld(country string, maxResults int, providerConfigJSON str
 			break
 		}
 	}
-	var expandWG sync.WaitGroup
-	expandSem := make(chan struct{}, 8)
+	sourceFns := []func(*http.Client, string, int) ([]string, error){
+		crtsh, crtName, ctLogs, certspotter, rapiddns, anubis,
+		subdomainCenter, hackerTarget, wayback, threatMiner,
+		commonCrawl, otxPassiveDNS, subdomainAPI, sonar, riddler,
+		jldc, sublist3r,
+	}
+	type task struct {
+		apex string
+		src  int
+	}
+	tasks := make([]task, 0, len(apexes)*len(sourceFns))
+	for _, a := range apexes {
+		for i := range sourceFns {
+			tasks = append(tasks, task{apex: a, src: i})
+		}
+	}
+
+	var next atomic.Int64
+	var stop atomic.Bool
+	srcFails := make([]atomic.Int32, len(sourceFns))
+	srcOK := make([]atomic.Int32, len(sourceFns))
+	budget := time.Now().Add(45 * time.Second)
 	var mu sync.Mutex
-	for _, apex := range apexes {
-		apex := apex
-		expandWG.Add(1)
+	var wg sync.WaitGroup
+	for w := 0; w < 24 && w < len(tasks); w++ {
+		wg.Add(1)
 		go func() {
-			defer expandWG.Done()
-			expandSem <- struct{}{}
-			defer func() { <-expandSem }()
-			sourceFns := []func(*http.Client, string, int) ([]string, error){
-				crtsh, crtName, ctLogs, certspotter, rapiddns, anubis,
-				subdomainCenter, hackerTarget, wayback, threatMiner,
-				commonCrawl, otxPassiveDNS, subdomainAPI, sonar, riddler,
-				jldc, sublist3r,
-			}
-			for _, sourceFn := range sourceFns {
-				found, err := sourceFn(client, apex, min(maxResults, 100))
+			defer wg.Done()
+			for !stop.Load() && time.Now().Before(budget) {
+				i := int(next.Add(1)) - 1
+				if i >= len(tasks) {
+					return
+				}
+				t := tasks[i]
+				if srcOK[t.src].Load() == 0 && srcFails[t.src].Load() >= 3 {
+					continue // circuit breaker: this source is blocked or down
+				}
+				found, err := sourceFns[t.src](client, t.apex, min(maxResults, 100))
 				if err != nil {
+					srcFails[t.src].Add(1)
 					continue
 				}
+				srcOK[t.src].Add(1)
 				mu.Lock()
 				combined = append(combined, found...)
 				size := len(combined)
 				mu.Unlock()
 				if size >= maxResults*3 {
-					return
+					stop.Store(true)
 				}
 			}
 		}()
 	}
-	expandWG.Wait()
+	wg.Wait()
 
 	combined = uniqueLimited(combined, maxResults)
 	if len(combined) == 0 && len(errors) > 0 {
@@ -192,7 +227,7 @@ func countryASNHostSeeds(c *http.Client, country string, limit int) ([]string, e
 		}
 	}
 	out := make([]string, 0, limit)
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, 12)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	for _, asn := range asns {
