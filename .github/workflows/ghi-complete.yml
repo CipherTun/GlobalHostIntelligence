@@ -1,3 +1,4 @@
+
 name: GHI Complete CI - Backend, Core & Android
 
 on:
@@ -431,55 +432,57 @@ jobs:
           test -n "$APK"
           test -s "$APK"
 
+          # Both required Android ABIs must be present.
           unzip -l "$APK" | grep -q 'lib/armeabi-v7a/libgojni.so'
           unzip -l "$APK" | grep -q 'lib/arm64-v8a/libgojni.so'
 
           NDK="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          READelf="$NDK/llvm-readelf"
+          READELF="$NDK/llvm-readelf"
           ZIPALIGN="${ANDROID_HOME}/build-tools/37.0.0/zipalign"
 
-          test -x "$READelf"
+          test -x "$READELF"
           test -x "$ZIPALIGN"
 
           CHECK_DIR="$RUNNER_TEMP/ghi-page-size-check"
           mkdir -p "$CHECK_DIR"
 
-          for ABI in arm64-v8a armeabi-v7a
+          # 16 KB ELF alignment is checked on the 64-bit ABI.
+          ABI="arm64-v8a"
+          LIB="$CHECK_DIR/libgojni-${ABI}.so"
+
+          unzip -p "$APK" "lib/${ABI}/libgojni.so" > "$LIB"
+          test -s "$LIB"
+
+          "$READELF" -lW "$LIB" |
+            awk '$1 == "LOAD" { print $NF }' \
+            > "$CHECK_DIR/alignments.txt"
+
+          test -s "$CHECK_DIR/alignments.txt"
+
+          while IFS= read -r ALIGNMENT
           do
-            LIB="$CHECK_DIR/libgojni-${ABI}.so"
-
-            unzip -p "$APK" "lib/${ABI}/libgojni.so" > "$LIB"
-
-            test -s "$LIB"
-
-            "$READelf" -lW "$LIB" |
-              awk '$1 == "LOAD" { print $NF }' \
-              > "$CHECK_DIR/alignments.txt"
-
-            test -s "$CHECK_DIR/alignments.txt"
-
-            while IFS= read -r ALIGNMENT
-            do
-              case "$ALIGNMENT" in
-                0x*)
-                  VALUE=$((16#${ALIGNMENT#0x}))
-                  ;;
-                *)
-                  echo "::error::Invalid ELF alignment: $ALIGNMENT"
-                  exit 1
-                  ;;
-              esac
-
-              if [ "$VALUE" -lt 16384 ]; then
-                echo "::error::${ABI} ELF alignment below 16 KB: $ALIGNMENT"
+            case "$ALIGNMENT" in
+              0x*)
+                VALUE=$((16#${ALIGNMENT#0x}))
+                ;;
+              *)
+                echo "::error::Invalid ELF alignment: $ALIGNMENT"
                 exit 1
-              fi
-            done < "$CHECK_DIR/alignments.txt"
-          done
+                ;;
+            esac
 
+            if [ "$VALUE" -lt 16384 ]; then
+              echo "::error::${ABI} ELF alignment below 16 KB: $ALIGNMENT"
+              exit 1
+            fi
+          done < "$CHECK_DIR/alignments.txt"
+
+          # Verify APK ZIP alignment.
           "$ZIPALIGN" -c -P 16 -v 4 "$APK"
 
-          echo "Debug APK native ABI and alignment verification passed."
+          echo "ARM32 and ARM64 libraries verified."
+          echo "ARM64 16 KB ELF alignment verified."
+          echo "APK ZIP alignment verified."
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
