@@ -51,8 +51,8 @@ func discoverRaw(c *http.Client, q, source string, limit int) ([]string, error) 
 		return jldc(c, q, limit)
 	case "sublist3r":
 		return sublist3r(c, q, limit)
-	case "projectdiscovery":
-		return nil, fmt.Errorf("ProjectDiscovery source requires an API key; use the dedicated bridge method")
+	case "projectdiscovery", "chaos":
+		return nil, fmt.Errorf("ProjectDiscovery Chaos requires an API key; use DiscoverProjectDiscovery or DiscoverSubdomainsWithKeys")
 	case "country":
 		return countryDiscovery(c, q, limit)
 	case "asn":
@@ -296,75 +296,47 @@ func sublist3r(c *http.Client, q string, limit int) ([]string, error) {
 	return uniqueLimited(out, limit), nil
 }
 
-// DiscoverProjectDiscovery integrates the current ProjectDiscovery Chaos API.
-// It is optional and requires the user's own X-API-Key; no credential is
-// embedded in the application.
+// DiscoverProjectDiscovery queries ProjectDiscovery's Chaos dataset with the
+// user's own API key (nothing is embedded in the application).
+//
+// The previous implementation called api.projectdiscovery.io/v1/domain/associated
+// with an X-API-Key header, which Chaos does not document, so it could never
+// succeed. The documented API is
+//
+//	GET https://dns.projectdiscovery.io/dns/{domain}/subdomains
+//	Authorization: <API key>
+//
+// The JSON envelope keeps the old keys (ok, source, query, results,
+// unique_count) and adds a plain "domains" array, the shape every other raw
+// discovery source returns.
 func DiscoverProjectDiscovery(domain, apiKey string, maxResults int) string {
-	domain = queryDomain(domain)
+	domain = normalizeDomain(queryDomain(domain))
 	apiKey = strings.TrimSpace(apiKey)
 	maxResults = clampDiscoveryLimit(maxResults)
-	if domain == "" {
-		return mustJSON(map[string]any{"ok": false, "error": "domain is required"})
+	if domain == "" || !isHostname(domain) {
+		return mustJSON(map[string]any{"ok": false, "source": "projectdiscovery", "error": "a valid domain is required"})
 	}
 	if apiKey == "" {
 		return mustJSON(map[string]any{"ok": false, "source": "projectdiscovery", "error": "ProjectDiscovery API key is not configured"})
 	}
 
-	req, err := http.NewRequest(http.MethodGet,
-		"https://api.projectdiscovery.io/v1/domain/associated?domain="+url.QueryEscape(domain)+"&limit="+fmt.Sprint(maxResults),
-		nil)
+	hosts, err := chaosSubdomains(&http.Client{Timeout: 20 * time.Second}, domain, apiKey, maxResults)
 	if err != nil {
 		return mustJSON(map[string]any{"ok": false, "source": "projectdiscovery", "error": err.Error()})
 	}
-	req.Header.Set("X-API-Key", apiKey)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", CurrentBrowserUserAgent)
-
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
-	if err != nil {
-		return mustJSON(map[string]any{"ok": false, "source": "projectdiscovery", "error": err.Error()})
+	if hosts == nil {
+		hosts = []string{}
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
-	if resp.StatusCode/100 != 2 {
-		return mustJSON(map[string]any{"ok": false, "source": "projectdiscovery", "status": resp.StatusCode, "error": strings.TrimSpace(string(body))})
-	}
-
-	var payload struct {
-		Domain  string `json:"domain"`
-		Results []struct {
-			Domain   string   `json:"domain"`
-			Sources  []string `json:"sources"`
-			Evidence any      `json:"evidence"`
-		} `json:"results"`
-		UniqueCount int `json:"unique_count"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return mustJSON(map[string]any{"ok": false, "source": "projectdiscovery", "error": err.Error()})
-	}
-
-	results := make([]map[string]any, 0, len(payload.Results))
-	seen := map[string]bool{}
-	for _, item := range payload.Results {
-		host := normalizeDomain(item.Domain)
-		if !matchesScope(host, domain) || !isHostname(host) || seen[host] {
-			continue
-		}
-		seen[host] = true
-		results = append(results, map[string]any{
-			"domain":   host,
-			"sources":  item.Sources,
-			"evidence": item.Evidence,
-		})
-		if len(results) >= maxResults {
-			break
-		}
+	results := make([]map[string]any, 0, len(hosts))
+	for _, host := range hosts {
+		results = append(results, map[string]any{"domain": host, "sources": []string{"chaos"}})
 	}
 	return mustJSON(map[string]any{
 		"ok":           true,
 		"source":       "projectdiscovery",
 		"query":        domain,
+		"domains":      hosts,
 		"results":      results,
-		"unique_count": payload.UniqueCount,
+		"unique_count": len(hosts),
 	})
 }
